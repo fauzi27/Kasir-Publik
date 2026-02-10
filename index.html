@@ -778,7 +778,7 @@
             const price = document.getElementById('new-menu-price').value;
             const stock = document.getElementById('new-menu-stock').value;
             let cat = document.getElementById('selected-admin-cat').value;
-            if(!cat || cat === 'all') cat = 'makanan';
+            if(!cat || cat === 'all') return Swal.fire('Error', 'Pilih kategori dulu', 'error');
 
             if(!name || !price) return Swal.fire('Error', 'Lengkapi data', 'error');
 
@@ -800,6 +800,7 @@
                 document.getElementById('new-menu-name').value = ''; 
                 document.getElementById('new-menu-price').value = '';
                 Swal.fire({icon: 'success', title: 'Tersimpan', timer: 1000, showConfirmButton: false});
+                renderAdminList();
             } catch (e) { Swal.fire('Error', 'Gagal simpan', 'error'); }
         }
 
@@ -864,8 +865,63 @@
             renderCart();
         }
 
-        window.renderMenuGrid = renderMenuGrid;
-        window.renderCart = renderCart;
+        window.renderManualHistory = function renderManualHistory() {
+            const list = document.getElementById('manual-history-list');
+            list.innerHTML = '';
+            let total = 0;
+            manualSessionCart.forEach((item, idx) => {
+                total += item.price;
+                const el = document.createElement('div');
+                el.className = 'flex justify-between text-sm mb-2 border-b pb-1';
+                el.innerHTML = `<span>Item Manual: Rp ${item.price.toLocaleString()}</span><button onclick="window.removeManualItem(${idx})" class="text-red-500"><i class="fas fa-trash"></i></button>`;
+                list.appendChild(el);
+            });
+            document.getElementById('manual-total-display').innerText = `Rp ${total.toLocaleString()}`;
+            document.getElementById('manual-footer').classList.toggle('hidden', manualSessionCart.length === 0);
+        }
+
+        window.renderMenuGrid = function renderMenuGrid() {
+            const grid = document.getElementById('menu-grid-container');
+            grid.innerHTML = '';
+            document.getElementById('loading-menu').classList.remove('hidden');
+            let filtered = menus.filter(m => currentCategory === 'all' || m.category === currentCategory);
+            filtered = getSortedMenus(filtered);
+            filtered.forEach(item => {
+                const el = document.createElement('button');
+                el.onclick = () => window.addToCart(item.id);
+                el.className = 'bg-white p-3 rounded-lg shadow-sm border text-center flex flex-col items-center gap-2';
+                el.innerHTML = `<div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center"><i class="fas ${item.icon || 'fa-utensils'} text-xl text-gray-600"></i></div><div class="font-bold text-sm">${item.name}</div><div class="text-xs text-gray-500">Rp ${item.price.toLocaleString()}</div><div class="text-[10px] text-red-500 ${item.stock <= 0 ? '' : 'hidden'}">Habis</div>`;
+                grid.appendChild(el);
+            });
+            document.getElementById('loading-menu').classList.add('hidden');
+        }
+
+        window.renderCart = function renderCart() {
+            const list = document.getElementById('cart-list');
+            const totalEl = document.getElementById('cart-total');
+            list.innerHTML = '';
+            let total = 0;
+            cart.forEach((item, idx) => {
+                const subtotal = item.price * item.qty;
+                total += subtotal;
+                const el = document.createElement('div');
+                el.className = 'flex justify-between items-center mb-2 border-b pb-1';
+                el.innerHTML = `
+                    <div class="flex-1">
+                        <div class="font-bold text-sm">${item.name}</div>
+                        <div class="text-xs text-gray-500">Rp ${item.price.toLocaleString()} x ${item.qty}</div>
+                    </div>
+                    <div class="text-right font-bold text-sm">Rp ${subtotal.toLocaleString()}</div>
+                    <div class="flex gap-2 ml-4">
+                        <button onclick="window.updateQty(${idx}, -1)" class="text-red-500">-</button>
+                        <button onclick="window.updateQty(${idx}, 1)" class="text-green-500">+</button>
+                    </div>
+                `;
+                list.appendChild(el);
+            });
+            totalEl.innerText = `Rp ${total.toLocaleString()}`;
+            if (cart.length === 0) list.innerHTML = '<p class="text-center text-gray-400 text-xs mt-4 italic">Belum ada pesanan</p>';
+        }
 
         window.editTransaction = function() {
             if(!currentViewedTrx) return;
@@ -957,7 +1013,21 @@
             Swal.fire({title: 'Memproses...', didOpen: () => Swal.showLoading()});
 
             try {
-                if (!editingTransactionId) {
+                if (editingTransactionId) {
+                    const oldTrx = transactions.find(t => t.id === editingTransactionId);
+                    for (const oldItem of oldTrx.items) {
+                        if (!oldItem.isManual) {
+                            const menu = menus.find(m => m.id === oldItem.id);
+                            if (menu) await setDoc(doc(db, "users", currentUser.uid, "menus", oldItem.id), { stock: (menu.stock || 0) + oldItem.qty }, { merge: true }); // Rollback
+                        }
+                    }
+                    for (const newItem of cart) {
+                        if (!newItem.isManual) {
+                            const menu = menus.find(m => m.id === newItem.id);
+                            if (menu) await setDoc(doc(db, "users", currentUser.uid, "menus", newItem.id), { stock: (menu.stock || 0) - newItem.qty }, { merge: true }); // Apply new
+                        }
+                    }
+                } else {
                     for (const item of cart) {
                         if (!item.isManual && item.id) {
                             const menuItem = menus.find(m => m.id === item.id);
@@ -1032,6 +1102,4 @@
         window.seedDefaultMenus = async function() { Swal.fire('Info', 'Gunakan menu Tambah Kategori dulu', 'info'); }
     </script>
 </body>
-</html>
-
-
+    </html>
