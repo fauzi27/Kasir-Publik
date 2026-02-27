@@ -1,3 +1,4 @@
+import Auth from './pages/Auth';
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
