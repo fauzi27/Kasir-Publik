@@ -1,4 +1,5 @@
 import Auth from './pages/Auth';
+import Lobby from './pages/Lobby';
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
