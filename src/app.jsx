@@ -10,6 +10,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [businessData, setBusinessData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentView, setCurrentView] = useState('lobby'); // 'lobby', 'cashier', 'admin', dll
 
   // === AUTH LISTENER (VERSI ANTI-MACET SAAT OFFLINE) ===
   useEffect(() => {
@@ -80,29 +81,23 @@ function App() {
   return (
     <div className="App min-h-screen bg-gray-900 text-white">
       {currentUser ? (
-        // JIKA SUDAH LOGIN (Nanti ini diganti dengan komponen <Lobby />)
-        <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
-          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-md">
-            <h1 className="text-2xl font-bold text-green-400 mb-1">
-              {businessData?.shopName || businessData?.name || 'ISZI Kasir'}
-            </h1>
-            <p className="text-xs text-gray-400 mb-6">
-              {businessData?.shopAddress || businessData?.address || 'Alamat Toko'}
-            </p>
-            
-            <div className="bg-green-900/30 text-green-400 p-3 rounded-lg mb-6 border border-green-800/50">
-              <i className="fas fa-check-circle mr-2"></i>
-              React & Firebase Terhubung Sempurna!
+        // RENDER HALAMAN SESUAI STATE 'currentView'
+        <>
+          {currentView === 'lobby' && (
+            <Lobby 
+              businessData={businessData} 
+              onNavigate={(view) => setCurrentView(view)} 
+            />
+          )}
+          
+          {/* Nanti kita tambahkan halaman lain di sini. Contoh: */}
+          {currentView === 'cashier' && (
+            <div className="p-6 text-center">
+              <h2>Halaman Kasir Sedang Dibangun...</h2>
+              <button onClick={() => setCurrentView('lobby')} className="mt-4 px-4 py-2 bg-blue-600 rounded">Kembali ke Lobi</button>
             </div>
-
-            <button 
-              onClick={() => signOut(auth)} 
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition active:scale-95"
-            >
-              Logout Sementara
-            </button>
-          </div>
-        </div>
+          )}
+        </>
       ) : (
         <Auth />
       )}
