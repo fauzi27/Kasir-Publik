@@ -1,0 +1,146 @@
+import { useState, useEffect } from 'react';
+import { db } from '../firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
+import Swal from 'sweetalert2';
+
+export default function Table({ businessData, currentUser, onNavigate }) {
+  const [transactions, setTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const shopOwnerId = businessData?.ownerId || currentUser?.uid;
+
+  // === MENGAMBIL DATA (REAL-TIME) ===
+  useEffect(() => {
+    if (!shopOwnerId) return;
+
+    const q = query(collection(db, "users", shopOwnerId, "transactions"), orderBy("timestamp", "desc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTransactions(data);
+      setIsLoading(false);
+    });
+
+    return () => unsub();
+  }, [shopOwnerId]);
+
+  // === FUNGSI EXPORT KE EXCEL (ASLI) ===
+  const handleExportExcel = () => {
+    if (transactions.length === 0) {
+      return Swal.fire('Kosong', 'Tidak ada data untuk diekspor', 'info');
+    }
+
+    Swal.fire({ title: 'Menyiapkan Excel...', didOpen: () => Swal.showLoading() });
+
+    try {
+      // 1. Siapkan data mentah menjadi format baris Excel
+      const excelData = transactions.map((t, index) => {
+        // Gabungkan nama item yang dibeli menjadi satu teks
+        const itemsText = t.items ? t.items.map(i => `${i.name} (${i.qty}x)`).join(', ') : 'Item Manual';
+        
+        return {
+          "No": index + 1,
+          "Tanggal": new Date(t.timestamp).toLocaleString('id-ID'),
+          "Pelanggan": t.buyerName || 'Pelanggan Umum',
+          "Item Dibeli": itemsText,
+          "Total (Rp)": t.total || 0,
+          "Status Pembayaran": t.paymentMethod || 'TUNAI',
+          "Kasir": t.cashierName || 'Admin'
+        };
+      });
+
+      // 2. Buat Worksheet dan Workbook
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Riwayat Transaksi");
+
+      // 3. Download File
+      XLSX.writeFile(workbook, `Laporan_Transaksi_${businessData?.shopName || 'ISZI'}_${new Date().toLocaleDateString('id-ID').replace(/\//g, '-')}.xlsx`);
+      
+      Swal.close();
+    } catch (error) {
+      Swal.fire('Error', 'Gagal membuat file Excel: ' + error.message, 'error');
+    }
+  };
+
+  // === RENDER TAMPILAN ===
+  return (
+    <div className="flex flex-col h-screen bg-gray-50 text-gray-800">
+      
+      {/* HEADER TABEL */}
+      <div className="bg-emerald-700 text-white p-4 shadow-md flex-none z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => onNavigate('lobby')} className="active:scale-90 transition p-1">
+              <i className="fas fa-arrow-left text-xl"></i>
+            </button>
+            <h2 className="font-bold text-lg">Buku Besar Transaksi</h2>
+          </div>
+          <button 
+            onClick={handleExportExcel} 
+            className="bg-emerald-800 hover:bg-emerald-900 px-4 py-2 rounded-lg text-xs font-bold shadow flex items-center gap-2 active:scale-95 transition"
+          >
+            <i className="fas fa-file-excel"></i> Export Excel
+          </button>
+        </div>
+      </div>
+
+      {/* AREA TABEL */}
+      <div className="flex-1 overflow-auto p-4 pb-24">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto hide-scrollbar">
+            <table className="w-full text-left border-collapse min-w-[800px]">
+              <thead>
+                <tr className="bg-gray-100 text-gray-600 text-xs uppercase tracking-wider border-b border-gray-200">
+                  <th className="p-3 font-bold w-12 text-center">No</th>
+                  <th className="p-3 font-bold w-40">Tanggal</th>
+                  <th className="p-3 font-bold w-40">Pelanggan</th>
+                  <th className="p-3 font-bold">Item Dibeli</th>
+                  <th className="p-3 font-bold w-32 text-right">Total</th>
+                  <th className="p-3 font-bold w-32 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan="6" className="p-10 text-center text-gray-400 text-sm">
+                      <i className="fas fa-circle-notch fa-spin mr-2"></i> Memuat data transaksi...
+                    </td>
+                  </tr>
+                ) : transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-10 text-center text-gray-400 text-sm italic">
+                      Belum ada riwayat transaksi.
+                    </td>
+                  </tr>
+                ) : (
+                  transactions.map((t, index) => (
+                    <tr key={t.id} className="hover:bg-emerald-50/50 transition duration-150">
+                      <td className="p-3 text-sm text-center text-gray-500">{index + 1}</td>
+                      <td className="p-3 text-sm text-gray-600">{new Date(t.timestamp).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                      <td className="p-3 text-sm font-semibold text-gray-800">{t.buyerName || 'Pelanggan Umum'}</td>
+                      <td className="p-3 text-sm text-gray-600 truncate max-w-[250px]">
+                        {t.items ? t.items.map(i => `${i.name} (${i.qty})`).join(', ') : <span className="italic text-gray-400">Input Manual</span>}
+                      </td>
+                      <td className="p-3 text-sm font-bold text-gray-800 text-right">Rp {(t.total || 0).toLocaleString('id-ID')}</td>
+                      <td className="p-3 text-center">
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                          t.paymentMethod === 'TUNAI' ? 'bg-green-100 text-green-700' : 
+                          t.paymentMethod === 'QRIS' ? 'bg-purple-100 text-purple-700' : 
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {t.paymentMethod || 'TUNAI'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      
+    </div>
+  );
+}
