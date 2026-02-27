@@ -12,7 +12,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState('lobby'); // 'lobby', 'cashier', 'admin', dll
 
-  // === AUTH LISTENER (VERSI ANTI-MACET SAAT OFFLINE) ===
+  // === AUTH LISTENER (VERSI ANTI-MACET SAAT OFFLINE BOSs) ===
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
