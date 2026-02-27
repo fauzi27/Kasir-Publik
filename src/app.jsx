@@ -103,12 +103,7 @@ function App() {
           </div>
         </div>
       ) : (
-        // JIKA BELUM LOGIN (Nanti ini diganti dengan komponen <Auth />)
-        <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
-          <img src="/asset/logokasir.png" alt="ISZI Logo" className="w-24 h-24 mb-4 drop-shadow-lg" />
-          <h1 className="text-2xl font-bold mb-2">Login ISZI React</h1>
-          <p className="text-sm text-gray-400 mb-6">Halaman login sedang dibangun...</p>
-        </div>
+        <Auth />
       )}
     </div>
   );
