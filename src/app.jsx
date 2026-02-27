@@ -90,7 +90,7 @@ function App() {
             />
           )}
           
-          {/* Nanti kita tambahkan halaman lain di sini. Contoh: */}
+          {/* Nanti kita tambahkan halaman lain di sini bos. Contoh: */}
           {currentView === 'cashier' && (
             <div className="p-6 text-center">
               <h2>Halaman Kasir Sedang Dibangun...</h2>
