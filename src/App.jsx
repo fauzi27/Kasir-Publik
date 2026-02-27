@@ -1,5 +1,10 @@
 import Auth from './pages/Auth';
 import Lobby from './pages/Lobby';
+import Cashier from './pages/Cashier';
+import Admin from './pages/Admin';
+import Stock from './pages/Stock';
+import Report from './pages/Report';
+
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -90,11 +95,50 @@ function App() {
             />
           )}
           
-          {/* Nanti kita tambahkan halaman lain di sini bos. Contoh: */}
           {currentView === 'cashier' && (
-            <div className="p-6 text-center">
-              <h2>Halaman Kasir Sedang Dibangun...</h2>
-              <button onClick={() => setCurrentView('lobby')} className="mt-4 px-4 py-2 bg-blue-600 rounded">Kembali ke Lobi</button>
+            <Cashier 
+              businessData={businessData} 
+              currentUser={currentUser} 
+              onNavigate={(view) => setCurrentView(view)} 
+            />
+          )}
+
+          {currentView === 'admin' && (
+            <Admin 
+              businessData={businessData} 
+              currentUser={currentUser} 
+              onNavigate={(view) => setCurrentView(view)} 
+            />
+          )}
+
+          {currentView === 'stock' && (
+            <Stock 
+              businessData={businessData} 
+              currentUser={currentUser} 
+              onNavigate={(view) => setCurrentView(view)} 
+            />
+          )}
+
+          {currentView === 'report' && (
+            <Report 
+              businessData={businessData} 
+              currentUser={currentUser} 
+              onNavigate={(view) => setCurrentView(view)} 
+            />
+          )}
+
+          {/* Fallback untuk halaman yang belum dibuat (Setting, Table, Calc) */}
+          {['settings', 'table', 'calculator'].includes(currentView) && (
+            <div className="flex flex-col items-center justify-center min-h-screen text-center p-6 bg-gray-900 text-white">
+              <i className="fas fa-tools text-5xl text-yellow-500 mb-4"></i>
+              <h2 className="text-xl font-bold mb-2">Segera Hadir!</h2>
+              <p className="text-gray-400 text-sm mb-6">Halaman {currentView} sedang dalam proses pemindahan ke React.</p>
+              <button 
+                onClick={() => setCurrentView('lobby')} 
+                className="px-6 py-2 bg-blue-600 rounded-full font-bold shadow-lg hover:bg-blue-700 transition active:scale-95"
+              >
+                Kembali ke Lobi
+              </button>
             </div>
           )}
         </>
