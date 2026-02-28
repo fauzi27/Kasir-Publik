@@ -113,20 +113,18 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const handleCheckoutClick = () => {
     if (cart.length === 0) return Swal.fire('Kosong', 'Pilih menu terlebih dahulu', 'warning');
     
-    // 🔥 PERBAIKAN: Struktur data disamakan persis dengan Vanilla JS (v1)
+    // Struktur data awal sebelum tahu metode pembayarannya
     const tempTx = {
       items: cart,
       total: cartTotal,
-      buyer: buyerName || 'Pelanggan Umum', // v1 pakai 'buyer'
+      buyer: buyerName || 'Pelanggan Umum',
       timestamp: Date.now(),
-      date: new Date().toLocaleString('id-ID'), // Penting untuk v1
-      operatorName: currentUser?.email?.split('@')[0] || 'Kasir', // v1 pakai 'operatorName'
-      
-      // Sediakan default payment agar tidak error di laporan v1
-      paid: cartTotal,
+      date: new Date().toLocaleString('id-ID'), 
+      operatorName: currentUser?.email?.split('@')[0] || 'Kasir', 
+      paid: 0,
       change: 0,
       remaining: 0,
-      method: null // v1 pakai 'method', bukan 'paymentMethod'
+      method: null 
     };
 
     setCurrentTransaction(tempTx);
@@ -134,27 +132,71 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     setIsModalOpen(true);
   };
 
+  // 🔥 PERBAIKAN: Fungsi proses pembayaran yang sudah disuntik Kalkulator Nominal
   const processPayment = async (method) => {
+    let paidAmount = 0;
+    let changeAmount = 0;
+    let remainingAmount = 0;
+    let finalMethod = method;
+
+    // A. JIKA PILIH TUNAI, MINTA INPUT NOMINAL
+    if (method === 'TUNAI') {
+      const result = await Swal.fire({
+        title: `Total: Rp ${cartTotal.toLocaleString('id-ID')}`,
+        input: 'number',
+        inputLabel: 'Masukkan Jumlah Uang Diterima (atau klik Uang Pas)',
+        showCancelButton: true,
+        confirmButtonText: 'Proses',
+        showDenyButton: true,
+        denyButtonText: 'Uang Pas',
+      });
+
+      if (result.isDismissed) return; // Dibatalkan oleh kasir
+
+      if (result.isDenied) {
+        paidAmount = cartTotal; // Uang pas
+      } else if (result.isConfirmed) {
+        if (!result.value) return Swal.fire('Error', 'Harus diisi!', 'error');
+        paidAmount = parseInt(result.value);
+      }
+
+      // Hitung Kembalian atau Hutang
+      if (paidAmount > cartTotal) {
+        changeAmount = paidAmount - cartTotal;
+      } else if (paidAmount < cartTotal) {
+        finalMethod = 'HUTANG';
+        remainingAmount = cartTotal - paidAmount;
+        await Swal.fire('Info', `Uang kurang! Otomatis dicatat sebagai Hutang dengan sisa Rp ${remainingAmount.toLocaleString('id-ID')}`, 'info');
+      }
+
+    // B. JIKA QRIS (Otomatis Uang Pas)
+    } else if (method === 'QRIS') {
+      paidAmount = cartTotal;
+
+    // C. JIKA HUTANG PENUH
+    } else if (method === 'HUTANG') {
+      remainingAmount = cartTotal;
+    }
+
+    // MULAI PROSES PENYIMPANAN KE FIREBASE
     Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
     try {
       const batch = writeBatch(db); 
-      
-      // 1. Simpan Transaksi Baru
       const txRef = doc(collection(db, "users", shopOwnerId, "transactions"));
       
-      // Masukkan metode pembayaran yang dipilih (TUNAI / QRIS / HUTANG)
-      const finalTx = { ...currentTransaction, method: method, id: txRef.id };
-      
-      // Jika hutang, sesuaikan remaining-nya
-      if (method === 'HUTANG') {
-        finalTx.remaining = finalTx.total;
-        finalTx.paid = 0;
-      }
+      const finalTx = { 
+        ...currentTransaction, 
+        method: finalMethod,
+        paid: paidAmount,
+        change: changeAmount,
+        remaining: remainingAmount,
+        id: txRef.id 
+      };
 
       batch.set(txRef, finalTx);
       
-      // 2. Potong Stok Menu
+      // Potong Stok Menu
       cart.forEach(item => {
         if (!item.id.toString().startsWith('manual_')) {
           const menuData = menus.find(m => m.id === item.id);
@@ -168,9 +210,10 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       
       await batch.commit(); 
       
-      Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Pembayaran diterima.', timer: 1500, showConfirmButton: false });
+      let successMsg = finalMethod === 'TUNAI' ? `Kembalian: Rp ${changeAmount.toLocaleString('id-ID')}` : 'Berhasil Disimpan';
+      Swal.fire({ icon: 'success', title: 'Transaksi Sukses', text: successMsg, timer: 1800, showConfirmButton: false });
       
-      // 3. Ubah modal ke mode 'view', dan kosongkan keranjang
+      // Ubah modal ke mode 'view', dan kosongkan keranjang
       setCurrentTransaction(finalTx);
       setModalMode('view');
       setCart([]);
@@ -330,7 +373,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         </div>
       </div>
 
-      {/* PANGGIL KOMPONEN MODAL STRUK DI SINI */}
       <ReceiptModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
