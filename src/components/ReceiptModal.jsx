@@ -1,5 +1,4 @@
-import { useState, useRef } from 'react';
-import html2canvas from 'html2canvas';
+import React from 'react';
 import Swal from 'sweetalert2';
 
 export default function ReceiptModal({ 
@@ -7,221 +6,229 @@ export default function ReceiptModal({
   onClose, 
   transaction, 
   businessData, 
-  mode = 'payment', // 'payment' (kasir baru) atau 'view' (lihat riwayat)
-  onProcessPayment,
-  onDelete,
-  onMarkLunas // 🔥 PROPS BARU DARI REPORT UNTUK PELUNASAN
+  mode, 
+  onProcessPayment, 
+  onDelete, 
+  onMarkLunas 
 }) {
-  const [buyerWA, setBuyerWA] = useState('');
-  const receiptRef = useRef(null);
-
   if (!isOpen || !transaction) return null;
 
-  const items = transaction.items || [];
-  const total = transaction.total || 0;
-  
-  const dateStr = transaction.date || (transaction.timestamp 
-    ? new Date(transaction.timestamp).toLocaleString('id-ID') 
-    : new Date().toLocaleString('id-ID'));
-
   const shopName = businessData?.shopName || businessData?.name || 'ISZI POS';
-  const shopAddress = businessData?.shopAddress || businessData?.address || 'Alamat Belum Diatur';
+  const shopAddress = businessData?.shopAddress || businessData?.address || 'Nusadua Bali';
 
-  const paid = transaction.paid || 0;
-  const change = transaction.change || 0;
-  const remaining = transaction.remaining || 0;
+  // === 1. GENERATE INVOICE ID (DDMMYYHHMM) ===
+  const txTime = transaction.timestamp ? new Date(transaction.timestamp) : new Date();
+  const dd = String(txTime.getDate()).padStart(2, '0');
+  const mm = String(txTime.getMonth() + 1).padStart(2, '0');
+  const yy = String(txTime.getFullYear()).slice(-2);
+  const hh = String(txTime.getHours()).padStart(2, '0');
+  const mins = String(txTime.getMinutes()).padStart(2, '0');
+  const invoiceId = `INV-${dd}${mm}${yy}${hh}${mins}`;
 
-  // === FUNGSI SIMPAN GAMBAR STRUK ===
-  const saveReceiptImage = async () => {
-    if (!receiptRef.current) return;
-    
-    Swal.fire({ title: 'Menyimpan Struk...', didOpen: () => Swal.showLoading() });
-    try {
-      const canvas = await html2canvas(receiptRef.current, { scale: 2, backgroundColor: '#ffffff' });
-      const imgData = canvas.toDataURL('image/jpeg', 0.9);
-      
-      const link = document.createElement('a');
-      link.download = `Nota_${shopName}_${Date.now()}.jpg`;
-      link.href = imgData;
-      link.click();
-      
-      Swal.close();
-    } catch (error) {
-      Swal.fire('Error', 'Gagal menyimpan gambar', 'error');
-    }
-  };
+  // === 2. HITUNG TOTAL ITEM (PCS) ===
+  const totalItemQty = transaction?.items?.reduce((sum, item) => sum + (item.qty || 1), 0) || 0;
 
-  // === FUNGSI KIRIM WA ===
-  const sendToWA = () => {
-    if (!buyerWA) return Swal.fire('Oops', 'Masukkan nomor WA pelanggan dulu', 'warning');
-    
-    let phone = buyerWA.replace(/\D/g, ''); 
-    if (phone.startsWith('0')) phone = '62' + phone.slice(1); 
-
-    let text = `*NOTA PEMBELIAN - ${shopName.toUpperCase()}*\n`;
-    text += `📅 ${dateStr}\n`;
-    text += `👤 Pelanggan: ${transaction.buyer || 'Umum'}\n`;
+  // === FUNGSI BAGIKAN KE WHATSAPP ===
+  const handleShareWA = () => {
+    let text = `*STRUK PEMBELIAN - ${shopName.toUpperCase()}*\n`;
+    text += `No: ${invoiceId}\n`;
+    text += `Tgl: ${txTime.toLocaleString('id-ID')}\n`;
     text += `--------------------------------\n`;
     
-    items.forEach(i => {
-      text += `${i.name}\n${i.qty} x Rp ${i.price.toLocaleString('id-ID')} = Rp ${(i.qty * i.price).toLocaleString('id-ID')}\n`;
+    transaction.items.forEach(i => {
+      text += `${i.name}\n${i.qty} x Rp ${(i.price || 0).toLocaleString('id-ID')} = Rp ${((i.price || 0) * (i.qty || 0)).toLocaleString('id-ID')}\n`;
     });
     
     text += `--------------------------------\n`;
-    text += `*TOTAL : Rp ${total.toLocaleString('id-ID')}*\n`;
-    if (transaction.method) text += `METODE : ${transaction.method}\n`;
+    text += `Total Item  : ${totalItemQty} Pcs\n`;
+    text += `Total Harga : *Rp ${(transaction.total || 0).toLocaleString('id-ID')}*\n`;
+    text += `Status      : *${transaction.method || 'LUNAS'}*\n`;
     
-    if (transaction.method === 'TUNAI' && paid > 0) {
-      text += `Bayar  : Rp ${paid.toLocaleString('id-ID')}\n`;
-      text += `Kembali: Rp ${change.toLocaleString('id-ID')}\n`;
-    }
-    if (remaining > 0) {
-      text += `Dibayar: Rp ${paid.toLocaleString('id-ID')}\n`;
-      text += `*Sisa Hutang: Rp ${remaining.toLocaleString('id-ID')}*\n`;
+    if ((transaction.remaining || 0) > 0) {
+      text += `Sisa Hutang : Rp ${(transaction.remaining || 0).toLocaleString('id-ID')}\n`;
     }
 
-    text += `--------------------------------\n`;
-    text += `Terima kasih atas kunjungannya! 🙏`;
+    text += `\nTerima kasih telah berbelanja!`;
 
     const encodedText = encodeURIComponent(text);
-    window.open(`https://wa.me/${phone}?text=${encodedText}`, '_blank');
+    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
   };
 
-  // === RENDER TAMPILAN ===
   return (
-    <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in transition-colors duration-300">
+      
+      {/* KOTAK MODAL */}
+      <div className="bg-gray-100 dark:bg-gray-800 rounded-2xl w-full max-w-sm flex flex-col overflow-hidden shadow-2xl transition-colors duration-300 max-h-[95vh]">
         
         {/* HEADER MODAL */}
-        <div className="bg-gray-100 p-3 flex justify-between items-center border-b flex-none">
-          <h3 className="font-bold text-gray-700">
-            <i className="fas fa-receipt mr-2 text-blue-500"></i>
+        <div className="bg-white dark:bg-gray-900 px-4 py-3 flex justify-between items-center border-b border-gray-200 dark:border-gray-700 flex-none transition-colors duration-300">
+          <h3 className="font-bold text-gray-800 dark:text-gray-100">
             {mode === 'payment' ? 'Pilih Pembayaran' : 'Detail Transaksi'}
           </h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-red-500 p-2 active:scale-90 transition">
-            <i className="fas fa-times text-xl"></i>
+          <button onClick={onClose} className="text-gray-400 hover:text-red-500 transition w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 dark:bg-gray-800">
+            <i className="fas fa-times"></i>
           </button>
         </div>
 
-        {/* KERTAS STRUK */}
-        <div className="p-6 overflow-y-auto bg-white flex-1 relative hide-scrollbar">
-          <div ref={receiptRef} className="font-mono text-sm text-gray-800 bg-white p-4 border border-gray-200 shadow-sm rounded">
-            <div className="text-center mb-4 border-b-2 border-dashed border-gray-400 pb-4">
-              <h2 className="font-extrabold text-lg">{shopName}</h2>
-              <p className="text-[10px] text-gray-500">{shopAddress}</p>
-            </div>
+        {/* AREA KERTAS STRUK (Selalu Putih untuk kesan Thermal Paper) */}
+        <div className="flex-1 overflow-y-auto p-4 bg-gray-200 dark:bg-gray-800 transition-colors duration-300 hide-scrollbar">
+          
+          <div id="receipt-paper" className="bg-white text-gray-800 p-5 shadow-sm relative overflow-hidden font-mono text-sm mx-auto w-full max-w-[320px]">
             
-            <div className="text-[10px] mb-4 border-b border-dashed border-gray-300 pb-2">
-              <div className="flex justify-between"><span>Tgl:</span> <span>{dateStr}</span></div>
-              <div className="flex justify-between"><span>Plg:</span> <span className="font-bold">{transaction.buyer || 'Umum'}</span></div>
-              <div className="flex justify-between"><span>Kasir:</span> <span>{transaction.operatorName || 'Admin'}</span></div>
-            </div>
-
-            <div className="mb-4">
-              {items.map((item, idx) => (
-                <div key={idx} className="mb-2">
-                  <div className="font-bold text-xs">{item.name}</div>
-                  <div className="flex justify-between text-[11px]">
-                    <span>{item.qty} x {item.price.toLocaleString('id-ID')}</span>
-                    <span>{(item.qty * item.price).toLocaleString('id-ID')}</span>
+            {/* === 3. WATERMARK STEMPEL TOKO === */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-[0.03] z-0 overflow-hidden">
+              <div className="-rotate-45 flex flex-col gap-5 w-[200%] items-center justify-center">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div key={i} className="flex gap-5 text-xs font-black uppercase whitespace-nowrap tracking-widest text-black">
+                    {Array.from({ length: 8 }).map((_, j) => (
+                      <span key={j}>{shopName}</span>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="border-t-2 border-dashed border-gray-400 pt-2 text-right">
-              <div className="flex justify-between font-bold text-sm">
-                <span>TOTAL:</span>
-                <span>Rp {total.toLocaleString('id-ID')}</span>
+                ))}
               </div>
-              
-              {transaction.method && (
-                <div className="flex justify-between font-bold text-[10px] mt-1 text-gray-500">
-                  <span>METODE:</span>
-                  <span>{transaction.method}</span>
+            </div>
+
+            {/* KONTEN STRUK (Z-INDEX DI ATAS WATERMARK) */}
+            <div className="relative z-10">
+              {/* Kop Surat */}
+              <div className="text-center mb-4">
+                <h2 className="font-extrabold text-xl tracking-tight uppercase">{shopName}</h2>
+                <p className="text-[10px] text-gray-500 mt-1 leading-tight">{shopAddress}</p>
+              </div>
+
+              {/* Info Transaksi */}
+              <div className="border-t border-b border-dashed border-gray-300 py-2 mb-3 text-[10px] flex justify-between">
+                <div>
+                  <p>{txTime.toLocaleString('id-ID')}</p>
+                  <p className="mt-0.5 font-bold">{invoiceId}</p>
                 </div>
-              )}
-              
-              {transaction.method === 'TUNAI' && paid > 0 && remaining === 0 && (
-                <div className="mt-2 pt-2 border-t border-dashed border-gray-200">
-                  <div className="flex justify-between text-xs">
-                    <span>Bayar:</span>
-                    <span>Rp {paid.toLocaleString('id-ID')}</span>
+                <div className="text-right">
+                  <p>Kasir: {transaction.operatorName || 'Admin'}</p>
+                  <p className="mt-0.5 uppercase">{transaction.buyer || 'Umum'}</p>
+                </div>
+              </div>
+
+              {/* Daftar Item */}
+              <div className="mb-3 min-h-[100px]">
+                {transaction.items?.map((item, idx) => (
+                  <div key={idx} className="mb-2 text-[11px]">
+                    <p className="font-bold">{item.name}</p>
+                    <div className="flex justify-between text-gray-600">
+                      <span>{item.qty} x Rp {(item.price || 0).toLocaleString('id-ID')}</span>
+                      <span className="font-bold text-gray-800">Rp {((item.price || 0) * (item.qty || 0)).toLocaleString('id-ID')}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-xs font-bold mt-0.5">
-                    <span>Kembali:</span>
-                    <span>Rp {change.toLocaleString('id-ID')}</span>
+                ))}
+              </div>
+
+              {/* === 4. TOTAL ITEM & TOTAL HARGA === */}
+              <div className="border-t border-dashed border-gray-300 pt-2 text-[11px]">
+                <div className="flex justify-between text-gray-600 mb-1">
+                  <span>Total Item:</span>
+                  <span className="font-bold text-gray-800">{totalItemQty} Pcs</span>
+                </div>
+                <div className="flex justify-between items-end mb-2">
+                  <span className="font-bold text-sm">TOTAL</span>
+                  <span className="font-extrabold text-lg tracking-tight">Rp {(transaction.total || 0).toLocaleString('id-ID')}</span>
+                </div>
+              </div>
+
+              {/* Status Pembayaran (Hanya muncul jika mode View) */}
+              {mode === 'view' && (
+                <div className="border-t border-dashed border-gray-300 pt-3 mt-1 text-[11px]">
+                  <div className="flex justify-between mb-1">
+                    <span>Metode:</span>
+                    <span className="font-bold">{transaction.method || 'TUNAI'}</span>
                   </div>
+                  {transaction.method !== 'HUTANG' && (
+                    <>
+                      <div className="flex justify-between mb-1 text-gray-600">
+                        <span>Dibayar:</span>
+                        <span>Rp {(transaction.paid || 0).toLocaleString('id-ID')}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Kembali:</span>
+                        <span>Rp {(transaction.change || 0).toLocaleString('id-ID')}</span>
+                      </div>
+                    </>
+                  )}
+                  {transaction.remaining > 0 && (
+                    <div className="flex justify-between mt-2 text-red-600 font-bold bg-red-50 p-1.5 rounded">
+                      <span>Sisa Hutang:</span>
+                      <span>Rp {(transaction.remaining || 0).toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {remaining > 0 && (
-                <div className="mt-2 pt-2 border-t border-dashed border-gray-200">
-                  <div className="flex justify-between text-xs">
-                    <span>Dibayar:</span>
-                    <span>Rp {paid.toLocaleString('id-ID')}</span>
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-red-600 mt-0.5">
-                    <span>Sisa Hutang:</span>
-                    <span>Rp {remaining.toLocaleString('id-ID')}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            <div className="text-center mt-6 text-[9px] text-gray-400 italic">
-              * Terima Kasih *<br/>Aplikasi Kasir ISZI
+              {/* Footer Struk */}
+              <div className="text-center mt-6 pt-2 border-t border-gray-200">
+                <p className="text-[9px] text-gray-400 italic">Terima kasih atas kunjungan Anda</p>
+              </div>
             </div>
           </div>
         </div>
-        
-        {/* FOOTER AKSI */}
-        {mode === 'payment' ? (
-          <div className="p-4 bg-gray-50 border-t grid grid-cols-3 gap-3 flex-none pb-safe">
-            <button onClick={() => onProcessPayment('TUNAI')} className="bg-green-100 border border-green-500 text-green-700 py-3 rounded-lg font-bold hover:bg-green-200 flex flex-col items-center active:scale-95 transition">
-              <span>TUNAI</span> <span className="text-[10px] font-normal">Cash</span>
-            </button>
-            <button onClick={() => onProcessPayment('HUTANG')} className="bg-red-100 border border-red-500 text-red-700 py-3 rounded-lg font-bold hover:bg-red-200 flex flex-col items-center active:scale-95 transition">
-              <span>HUTANG</span> <span className="text-[10px] font-normal">Bon/Credit</span>
-            </button>
-            <button onClick={() => onProcessPayment('QRIS')} className="bg-purple-100 border border-purple-500 text-purple-700 py-3 rounded-lg font-bold hover:bg-purple-200 flex flex-col items-center active:scale-95 transition">
-              <span>QRIS</span> <span className="text-[10px] font-normal">Scan/Digital</span>
-            </button>
-          </div>
-        ) : (
-          <div className="p-4 bg-gray-50 border-t flex flex-col gap-2 flex-none pb-safe">
-            <input 
-              type="tel" 
-              value={buyerWA} 
-              onChange={(e) => setBuyerWA(e.target.value)} 
-              placeholder="No. WA Pelanggan (Cth: 0812...)" 
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-green-500 mb-1"
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={sendToWA} className="bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 flex items-center justify-center gap-2 shadow-sm active:scale-95 transition text-sm">
-                <i className="fab fa-whatsapp text-lg"></i> Kirim WA
+
+        {/* FOOTER ACTION BUTTONS */}
+        <div className="bg-white dark:bg-gray-900 p-4 border-t border-gray-200 dark:border-gray-700 flex-none transition-colors duration-300">
+          
+          {mode === 'payment' ? (
+            // TOMBOL MODE CHECKOUT
+            <div className="grid grid-cols-3 gap-2">
+              <button 
+                onClick={() => onProcessPayment('TUNAI')}
+                className="bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl font-bold shadow-sm active:scale-95 transition flex flex-col items-center justify-center gap-1"
+              >
+                <i className="fas fa-money-bill-wave text-lg"></i> <span className="text-[10px] uppercase">Tunai</span>
               </button>
-              <button onClick={saveReceiptImage} className="bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 flex items-center justify-center gap-2 shadow-sm active:scale-95 transition text-sm">
-                <i className="fas fa-download"></i> Simpan
+              <button 
+                onClick={() => onProcessPayment('QRIS')}
+                className="bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold shadow-sm active:scale-95 transition flex flex-col items-center justify-center gap-1"
+              >
+                <i className="fas fa-qrcode text-lg"></i> <span className="text-[10px] uppercase">QRIS</span>
+              </button>
+              <button 
+                onClick={() => onProcessPayment('HUTANG')}
+                className="bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold shadow-sm active:scale-95 transition flex flex-col items-center justify-center gap-1"
+              >
+                <i className="fas fa-book-open text-lg"></i> <span className="text-[10px] uppercase">Hutang</span>
               </button>
             </div>
-            
-            {/* 🔥 TOMBOL LUNAS (Hanya muncul jika ada sisa hutang) */}
-            {onMarkLunas && remaining > 0 && (
-              <button onClick={() => onMarkLunas(transaction)} className="w-full mt-2 bg-green-500 text-white py-2.5 rounded-lg font-bold hover:bg-green-600 flex items-center justify-center gap-2 active:scale-95 transition text-sm shadow-md">
-                <i className="fas fa-hand-holding-usd text-lg"></i> Pelanggan Sudah Bayar (Lunas)
-              </button>
-            )}
+          ) : (
+            // TOMBOL MODE VIEW (DARI LAPORAN)
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleShareWA}
+                  className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-xl font-bold text-xs shadow-sm active:scale-95 transition flex items-center justify-center gap-2"
+                >
+                  <i className="fab fa-whatsapp text-base"></i> Kirim WA
+                </button>
+                
+                {/* Tombol Lunas hanya muncul jika ada sisa hutang */}
+                {transaction.remaining > 0 && onMarkLunas && (
+                  <button 
+                    onClick={() => onMarkLunas(transaction)}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold text-xs shadow-sm active:scale-95 transition flex items-center justify-center gap-2"
+                  >
+                    <i className="fas fa-check-circle text-base"></i> Pelunasan
+                  </button>
+                )}
+              </div>
+              
+              {/* Tombol Hapus hanya dirender jika onDelete dikirim (Artinya Admin yang login) */}
+              {onDelete && (
+                <button 
+                  onClick={() => onDelete(transaction.id)}
+                  className="w-full bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 border border-red-100 dark:border-red-800/30 hover:bg-red-100 dark:hover:bg-red-900/40 py-2.5 rounded-xl font-bold text-xs shadow-sm active:scale-95 transition flex items-center justify-center gap-2 mt-1"
+                >
+                  <i className="fas fa-trash-alt"></i> Hapus Transaksi
+                </button>
+              )}
+            </div>
+          )}
 
-            {/* Tombol Hapus Transaksi */}
-            {onDelete && (
-              <button onClick={() => onDelete(transaction.id)} className="w-full mt-1 bg-red-50 text-red-600 border border-red-200 py-2 rounded-lg font-bold hover:bg-red-100 flex items-center justify-center gap-2 active:scale-95 transition text-sm">
-                <i className="fas fa-trash-alt"></i> Hapus Transaksi
-              </button>
-            )}
-          </div>
-        )}
-
+        </div>
       </div>
     </div>
   );
