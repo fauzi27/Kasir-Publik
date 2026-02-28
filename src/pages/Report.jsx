@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
 import Swal from 'sweetalert2';
+import ReceiptModal from '../components/ReceiptModal';
 
 export default function Report({ businessData, currentUser, onNavigate }) {
   // === STATE DATA ===
@@ -9,8 +10,13 @@ export default function Report({ businessData, currentUser, onNavigate }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // === STATE FILTER ===
-  const [dateFilter, setDateFilter] = useState('today'); // today, yesterday, 7days, month, custom
+  const [dateFilter, setDateFilter] = useState('today'); 
   const [customDate, setCustomDate] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState('ALL'); // 'ALL' atau 'HUTANG'
+
+  // === STATE MODAL ===
+  const [selectedTx, setSelectedTx] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   const shopOwnerId = businessData?.ownerId || currentUser?.uid;
 
@@ -18,7 +24,6 @@ export default function Report({ businessData, currentUser, onNavigate }) {
   useEffect(() => {
     if (!shopOwnerId) return;
 
-    // Mengambil transaksi dan mengurutkannya dari yang terbaru
     const q = query(collection(db, "users", shopOwnerId, "transactions"), orderBy("timestamp", "desc"));
     const unsub = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -29,7 +34,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     return () => unsub();
   }, [shopOwnerId]);
 
-  // === LOGIKA FILTER TANGGAL ===
+  // === LOGIKA FILTER TANGGAL & HUTANG ===
   const getFilteredTransactions = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -37,7 +42,8 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     const sevenDaysAgo = today - (7 * 24 * 60 * 60 * 1000);
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-    return transactions.filter(t => {
+    // 1. Filter Tanggal
+    let filtered = transactions.filter(t => {
       const tTime = t.timestamp || 0;
       if (dateFilter === 'today') return tTime >= today;
       if (dateFilter === 'yesterday') return tTime >= yesterday && tTime < today;
@@ -50,14 +56,19 @@ export default function Report({ businessData, currentUser, onNavigate }) {
       }
       return true;
     });
+
+    // 2. Filter Status Hutang
+    if (paymentFilter === 'HUTANG') {
+      filtered = filtered.filter(t => (t.remaining || 0) > 0);
+    }
+
+    return filtered;
   };
 
   const filteredData = getFilteredTransactions();
 
-  // === KALKULASI OTOMATIS (SINKRON DENGAN RUMUS V1) ===
+  // === KALKULASI OTOMATIS DASBOR ===
   const totalOmzet = filteredData.reduce((sum, t) => sum + (t.total || 0), 0);
-  
-  // 🔥 PERBAIKAN: Hitung Tunai Murni (Total kurangi hutang jika ada)
   const totalTunai = filteredData.reduce((sum, t) => {
     if (t.method === 'TUNAI') {
       const tunaiMurni = (t.total || 0) - (t.remaining || 0);
@@ -65,16 +76,44 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     }
     return sum;
   }, 0);
-
-  // 🔥 PERBAIKAN: Gunakan key t.method dan t.remaining
   const totalQRIS = filteredData.reduce((sum, t) => sum + (t.method === 'QRIS' ? (t.total || 0) : 0), 0);
   const totalHutang = filteredData.reduce((sum, t) => sum + (t.remaining || (t.method === 'HUTANG' ? (t.total || 0) : 0)), 0);
-  
   const totalTransaksi = filteredData.length;
+
+  // === FUNGSI HAPUS TRANSAKSI ===
+  const handleDeleteTransaction = async (txId) => {
+    Swal.fire({
+      title: 'Hapus Transaksi?',
+      text: "Data ini akan dihapus permanen dari laporan!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Ya, Hapus!',
+      cancelButtonText: 'Batal'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        Swal.fire({ title: 'Menghapus...', didOpen: () => Swal.showLoading() });
+        try {
+          await deleteDoc(doc(db, "users", shopOwnerId, "transactions", txId));
+          setIsModalOpen(false); // Tutup modal setelah dihapus
+          Swal.fire({ icon: 'success', title: 'Terhapus!', timer: 1200, showConfirmButton: false });
+        } catch (error) {
+          Swal.fire('Error', 'Gagal menghapus: ' + error.message, 'error');
+        }
+      }
+    });
+  };
 
   // === MOCKUP EXPORT (Bisa diaktifkan nanti) ===
   const handleExport = (type) => {
     Swal.fire('Info', `Fitur Export ${type} sedang dipersiapkan untuk React!`, 'info');
+  };
+
+  // === BUKA DETAIL TRANSAKSI ===
+  const openTransactionDetail = (tx) => {
+    setSelectedTx(tx);
+    setIsModalOpen(true);
   };
 
   // === RENDER TAMPILAN ===
@@ -118,8 +157,12 @@ export default function Report({ businessData, currentUser, onNavigate }) {
         <div className="bg-white rounded-2xl shadow-lg p-5 mb-6 border border-gray-100 relative overflow-hidden">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-purple-100 to-blue-50 rounded-full opacity-50"></div>
           
-          <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Total Omzet Kotor</p>
-          <h3 className="text-3xl font-extrabold text-gray-800 mb-4">Rp {totalOmzet.toLocaleString('id-ID')}</h3>
+          <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">
+            {paymentFilter === 'HUTANG' ? 'Total Sisa Hutang' : 'Total Omzet Kotor'}
+          </p>
+          <h3 className={`text-3xl font-extrabold mb-4 ${paymentFilter === 'HUTANG' ? 'text-red-600' : 'text-gray-800'}`}>
+            Rp {paymentFilter === 'HUTANG' ? totalHutang.toLocaleString('id-ID') : totalOmzet.toLocaleString('id-ID')}
+          </h3>
           
           <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4">
             <div>
@@ -141,33 +184,73 @@ export default function Report({ businessData, currentUser, onNavigate }) {
           </div>
         </div>
 
+        {/* HEADER DAFTAR TRANSAKSI + FILTER HUTANG */}
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="font-bold text-gray-800 text-sm">Rincian Transaksi</h3>
+          <div className="bg-gray-200 rounded-lg p-1 flex gap-1 shadow-inner">
+            <button 
+              onClick={() => setPaymentFilter('ALL')} 
+              className={`px-3 py-1 text-xs font-bold rounded-md transition ${paymentFilter === 'ALL' ? 'bg-white text-purple-700 shadow' : 'text-gray-500'}`}
+            >
+              Semua
+            </button>
+            <button 
+              onClick={() => setPaymentFilter('HUTANG')} 
+              className={`px-3 py-1 text-xs font-bold rounded-md transition flex items-center gap-1 ${paymentFilter === 'HUTANG' ? 'bg-red-500 text-white shadow' : 'text-gray-500'}`}
+            >
+              <i className="fas fa-exclamation-circle text-[10px]"></i> Hutang
+            </button>
+          </div>
+        </div>
+
         {/* DAFTAR TRANSAKSI */}
-        <h3 className="font-bold text-gray-800 text-sm mb-3">Rincian Transaksi</h3>
         <div className="space-y-3">
           {isLoading ? (
              <div className="text-center mt-10 text-gray-400 text-xs"><i className="fas fa-circle-notch fa-spin"></i> Memuat Data...</div>
           ) : filteredData.length === 0 ? (
-             <div className="text-center mt-6 text-gray-400 text-xs italic">Tidak ada transaksi di periode ini.</div>
+             <div className="text-center mt-6 text-gray-400 text-xs italic">
+               {paymentFilter === 'HUTANG' ? 'Alhamdulillah, tidak ada yang ngutang di periode ini.' : 'Tidak ada transaksi di periode ini.'}
+             </div>
           ) : (
-            filteredData.map(t => (
-              <div key={t.id} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-                <div>
-                  {/* 🔥 PERBAIKAN: Gunakan t.buyer dan t.date agar sinkron dengan v1 */}
-                  <p className="font-bold text-sm text-gray-800">{t.buyer || 'Pelanggan Umum'}</p>
-                  <p className="text-[10px] text-gray-500">{t.date || new Date(t.timestamp).toLocaleString('id-ID')}</p>
+            filteredData.map(t => {
+              const hasHutang = (t.remaining || 0) > 0;
+              return (
+                <div 
+                  key={t.id} 
+                  onClick={() => openTransactionDetail(t)}
+                  className={`bg-white p-3 rounded-xl shadow-sm border-l-4 cursor-pointer hover:bg-gray-50 active:scale-95 transition flex justify-between items-center ${hasHutang ? 'border-red-500' : t.method === 'QRIS' ? 'border-blue-500' : 'border-green-500'}`}
+                >
+                  <div>
+                    <p className="font-bold text-sm text-gray-800 flex items-center gap-2">
+                      {t.buyer || 'Pelanggan Umum'}
+                      {hasHutang && <span className="bg-red-100 text-red-600 text-[9px] font-extrabold px-1.5 py-0.5 rounded">NGUTANG</span>}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{t.date || new Date(t.timestamp).toLocaleString('id-ID')}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-sm text-gray-800">Rp {(t.total || 0).toLocaleString('id-ID')}</p>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${hasHutang ? 'bg-red-100 text-red-700' : t.method === 'QRIS' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                      {hasHutang ? `Sisa: ${(t.remaining || 0).toLocaleString('id-ID')}` : (t.method || 'TUNAI')}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-sm text-blue-700">Rp {(t.total || 0).toLocaleString('id-ID')}</p>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${t.method === 'TUNAI' ? 'bg-green-100 text-green-700' : t.method === 'QRIS' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700'}`}>
-                    {t.method || 'TUNAI'}
-                  </span>
-                </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
 
       </div>
+
+      {/* MODAL STRUK (DIBUKA DALAM MODE VIEW) */}
+      <ReceiptModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        transaction={selectedTx}
+        businessData={businessData}
+        mode="view"
+        onDelete={handleDeleteTransaction}
+      />
+      
     </div>
   );
 }
