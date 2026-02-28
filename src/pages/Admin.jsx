@@ -11,7 +11,7 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
   // === STATE FILTER & SORTING ===
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortMode, setSortMode] = useState('default'); // default, name_asc, price_high, price_low
+  const [sortMode, setSortMode] = useState('default'); 
 
   // === STATE FORM TAMBAH MENU BARU ===
   const [newName, setNewName] = useState('');
@@ -67,7 +67,8 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
   const handleAddMenu = async () => {
     if (!newName || !newPrice) return Swal.fire('Error', 'Nama dan harga wajib diisi', 'error');
 
-    let cat = activeCategory === 'all' ? 'makanan' : activeCategory;
+    // 🔥 Perbaikan Kategori: Pastikan huruf kecil agar seragam
+    let cat = activeCategory === 'all' ? 'makanan' : activeCategory.toLowerCase();
     let icon = 'fa-utensils';
     let color = 'bg-white';
     if(cat.includes('minum')) { icon = 'fa-glass-water'; color = 'bg-blue-50'; }
@@ -91,7 +92,6 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
         image: imageUrl
       });
 
-      // Reset Form
       setNewName(''); setNewPrice(''); setNewStock('100');
       setNewImageFile(null); setPreviewImg(null);
       Swal.fire({icon: 'success', title: 'Tersimpan', timer: 1000, showConfirmButton: false});
@@ -112,14 +112,135 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
     await setDoc(doc(db, "users", shopOwnerId, "menus", item.id), { favorite: !item.favorite }, { merge: true });
   };
 
-  // === FUNGSI KATEGORI (SWEETALERT) ===
+  // 🔥 BARU: FUNGSI EDIT MENU (SWEETALERT POPUP)
+  const handleEditMenu = async (item) => {
+    // Siapkan opsi dropdown kategori
+    let catOptions = `<option value="makanan">makanan</option>
+                      <option value="minuman">minuman</option>
+                      <option value="camilan">camilan</option>`;
+                      
+    categories.forEach(c => {
+        const catName = c.name.toLowerCase();
+        if(!['makanan', 'minuman', 'camilan'].includes(catName)) {
+            catOptions += `<option value="${catName}">${c.name}</option>`;
+        }
+    });
+
+    catOptions = catOptions.replace(`value="${item.category}"`, `value="${item.category}" selected`);
+
+    const imgThumb = item.image ? item.image.replace('/upload/', '/upload/w_150,h_150,c_fill,q_auto,f_auto/') : '';
+    const currentImageHtml = imgThumb ? `<img src="${imgThumb}" class="h-16 w-16 object-cover mx-auto mb-2 rounded shadow-sm border border-gray-300">` : '';
+
+    const { value: formValues } = await Swal.fire({
+        title: 'Edit Item',
+        html: `
+            ${currentImageHtml}
+            <div class="text-left mb-1 mt-2 text-xs font-bold text-gray-700">Ganti Foto (Kosongkan jika tidak diganti)</div>
+            <input type="file" id="edit-image" accept="image/*" class="w-full text-xs p-1 mb-2 border rounded bg-gray-50 cursor-pointer">
+            
+            <div class="text-left mb-1 mt-2 text-xs font-bold text-gray-700">Nama Menu</div>
+            <input id="edit-name" class="swal2-input !m-0 !w-full" placeholder="Nama Menu" value="${item.name}">
+            
+            <div class="text-left mb-1 mt-3 text-xs font-bold text-gray-700">Harga (Rp)</div>
+            <input id="edit-price" type="number" class="swal2-input !m-0 !w-full" placeholder="Harga" value="${item.price}">
+            
+            <div class="text-left mb-1 mt-3 text-xs font-bold text-gray-700">Stok Menu</div>
+            <input id="edit-stock" type="number" class="swal2-input !m-0 !w-full" placeholder="Stok" value="${item.stock || 0}">
+            
+            <div class="text-left mb-1 mt-3 text-xs font-bold text-gray-700">Kategori</div>
+            <select id="edit-category" class="swal2-input !m-0 !w-full h-[54px]">${catOptions}</select>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Simpan',
+        cancelButtonText: 'Batal',
+        preConfirm: () => {
+            return {
+                name: document.getElementById('edit-name').value,
+                price: parseInt(document.getElementById('edit-price').value),
+                stock: parseInt(document.getElementById('edit-stock').value),
+                category: document.getElementById('edit-category').value.toLowerCase(),
+                imageFile: document.getElementById('edit-image').files[0] 
+            }
+        }
+    });
+
+    if (formValues) {
+        if (!formValues.name || isNaN(formValues.price)) {
+            return Swal.fire('Error', 'Nama dan Harga harus diisi dengan angka yang valid!', 'error');
+        }
+
+        let newIcon = item.icon || 'fa-utensils';
+        let newColor = item.color || 'bg-white';
+        if(formValues.category.includes('minum')) { newIcon = 'fa-glass-water'; newColor = 'bg-blue-50'; }
+        else if(formValues.category.includes('camil')) { newIcon = 'fa-bread-slice'; newColor = 'bg-yellow-50'; }
+        else { newIcon = 'fa-utensils'; newColor = 'bg-white'; }
+
+        Swal.fire({title: 'Menyimpan...', didOpen: () => Swal.showLoading()});
+        try {
+            let updateData = {
+                name: formValues.name,
+                price: formValues.price,
+                stock: formValues.stock,
+                category: formValues.category,
+                icon: newIcon,
+                color: newColor
+            };
+
+            if (formValues.imageFile) {
+                const newImageUrl = await uploadToCloudinary(formValues.imageFile);
+                updateData.image = newImageUrl;
+            }
+
+            await setDoc(doc(db, "users", shopOwnerId, "menus", item.id), updateData, { merge: true });
+            Swal.fire({icon: 'success', title: 'Berhasil Diupdate', timer: 1200, showConfirmButton: false});
+        } catch (e) {
+            Swal.fire('Error', 'Gagal update: ' + e.message, 'error');
+        }
+    }
+  };
+
+
+  // === FUNGSI KATEGORI (TAMBAH & HAPUS) ===
   const addCategoryPrompt = async () => {
     const { value: catName } = await Swal.fire({ title: 'Tambah Kategori', input: 'text', showCancelButton: true });
     if (catName) {
       await addDoc(collection(db, "users", shopOwnerId, "categories"), { name: catName, id: catName.toLowerCase() });
-      Swal.fire('Sukses', 'Kategori ditambahkan', 'success');
+      Swal.fire({icon: 'success', title: 'Kategori ditambahkan', timer: 1000, showConfirmButton: false});
     }
   };
+
+  // 🔥 BARU: FUNGSI HAPUS KATEGORI
+  const deleteCategoryModal = () => {
+    if (categories.length === 0) return Swal.fire('Info', 'Tidak ada kategori untuk dihapus.', 'info');
+
+    let listHtml = '<div class="flex flex-col gap-2 max-h-60 overflow-y-auto mt-2 text-left">';
+    categories.forEach(cat => {
+        // Karena SweetAlert menggunakan string HTML murni, kita panggil fungsi global sementara
+        window.executeDeleteCat = async (uid, name) => {
+            const res = await Swal.fire({
+                title: 'Yakin hapus?', text: `Kategori "${name}"?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33'
+            });
+            if (res.isConfirmed) {
+                await deleteDoc(doc(db, "users", shopOwnerId, "categories", uid));
+                if (activeCategory === name.toLowerCase()) setActiveCategory('all');
+                Swal.fire({icon: 'success', title: 'Terhapus', timer: 1000, showConfirmButton: false});
+            }
+        };
+        listHtml += `
+            <div class="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
+                <span class="text-sm font-semibold text-gray-700">${cat.name}</span>
+                <button onclick="window.executeDeleteCat('${cat.uid}', '${cat.name}')" class="bg-red-500 text-white w-8 h-8 rounded flex items-center justify-center hover:bg-red-600 active:scale-95 transition">
+                    Hapus
+                </button>
+            </div>
+        `;
+    });
+    listHtml += '</div>';
+
+    Swal.fire({ title: 'Hapus Kategori', html: listHtml, showConfirmButton: false, showCloseButton: true });
+  };
+
 
   // === FILTER & SORTING ARRAY ===
   const toggleSort = () => {
@@ -180,8 +301,9 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
           {/* TAB KATEGORI ADMIN */}
           <div className="flex gap-2 items-center w-full mb-3">
             <div className="flex gap-1 border-r border-gray-300 pr-2 flex-none">
-              <button onClick={addCategoryPrompt} className="px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-600 border border-green-200 hover:bg-green-200 active:scale-95"><i className="fas fa-plus"></i></button>
-              {/* Tombol Delete Category bisa ditambahkan jika perlu */}
+              <button onClick={addCategoryPrompt} className="px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-600 border border-green-200 hover:bg-green-200 active:scale-95" title="Tambah Kategori"><i className="fas fa-plus"></i></button>
+              {/* 🔥 Tombol Hapus Kategori Diaktifkan */}
+              <button onClick={deleteCategoryModal} className="px-3 py-1.5 rounded-full text-xs font-bold bg-red-100 text-red-600 border border-red-200 hover:bg-red-200 active:scale-95" title="Hapus Kategori"><i className="fas fa-times"></i></button>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1 flex-1 hide-scrollbar">
               <button onClick={() => setActiveCategory('all')} className={`px-4 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap ${activeCategory === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'}`}>Semua</button>
@@ -241,9 +363,14 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
                   <div className="text-xs text-gray-500">{item.category} • Stok: {item.stock || 0}</div>
                 </div>
               </div>
+              
               <div className="flex gap-2">
-                <button onClick={() => toggleFavorite(item)} className={`text-xl ${item.favorite ? 'text-red-500' : 'text-gray-300'}`}>
+                <button onClick={() => toggleFavorite(item)} className={`text-xl ${item.favorite ? 'text-red-500' : 'text-gray-300'} active:scale-90 transition`}>
                   {item.favorite ? '❤️' : '♡'}
+                </button>
+                {/* 🔥 Tombol Edit Diaktifkan */}
+                <button onClick={() => handleEditMenu(item)} className="text-blue-500 px-3 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition active:scale-95">
+                  <i className="fas fa-edit"></i>
                 </button>
                 <button onClick={() => handleDeleteMenu(item.id)} className="text-red-500 px-3 py-2 bg-red-50 rounded-lg hover:bg-red-100 transition active:scale-95">
                   <i className="fas fa-trash"></i>
