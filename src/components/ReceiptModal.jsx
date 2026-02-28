@@ -9,7 +9,8 @@ export default function ReceiptModal({
   businessData, 
   mode = 'payment', // 'payment' (kasir baru) atau 'view' (lihat riwayat)
   onProcessPayment,
-  onDelete
+  onDelete,
+  onMarkLunas // 🔥 PROPS BARU DARI REPORT UNTUK PELUNASAN
 }) {
   const [buyerWA, setBuyerWA] = useState('');
   const receiptRef = useRef(null);
@@ -19,16 +20,13 @@ export default function ReceiptModal({
   const items = transaction.items || [];
   const total = transaction.total || 0;
   
-  // Baca 'date' bawaan v1, jika tidak ada gunakan timestamp
   const dateStr = transaction.date || (transaction.timestamp 
     ? new Date(transaction.timestamp).toLocaleString('id-ID') 
     : new Date().toLocaleString('id-ID'));
 
-  // 🔥 PERBAIKAN 1: Logika Nama & Alamat Toko yang lebih kuat
   const shopName = businessData?.shopName || businessData?.name || 'ISZI POS';
   const shopAddress = businessData?.shopAddress || businessData?.address || 'Alamat Belum Diatur';
 
-  // Ambil data nominal jika sudah diproses
   const paid = transaction.paid || 0;
   const change = transaction.change || 0;
   const remaining = transaction.remaining || 0;
@@ -73,7 +71,6 @@ export default function ReceiptModal({
     text += `*TOTAL : Rp ${total.toLocaleString('id-ID')}*\n`;
     if (transaction.method) text += `METODE : ${transaction.method}\n`;
     
-    // Tambahan detail bayar untuk WA
     if (transaction.method === 'TUNAI' && paid > 0) {
       text += `Bayar  : Rp ${paid.toLocaleString('id-ID')}\n`;
       text += `Kembali: Rp ${change.toLocaleString('id-ID')}\n`;
@@ -106,7 +103,7 @@ export default function ReceiptModal({
           </button>
         </div>
 
-        {/* KERTAS STRUK (Area yang akan difoto) */}
+        {/* KERTAS STRUK */}
         <div className="p-6 overflow-y-auto bg-white flex-1 relative hide-scrollbar">
           <div ref={receiptRef} className="font-mono text-sm text-gray-800 bg-white p-4 border border-gray-200 shadow-sm rounded">
             <div className="text-center mb-4 border-b-2 border-dashed border-gray-400 pb-4">
@@ -138,7 +135,6 @@ export default function ReceiptModal({
                 <span>Rp {total.toLocaleString('id-ID')}</span>
               </div>
               
-              {/* 🔥 PERBAIKAN 2: Render Nominal Kembalian & Hutang */}
               {transaction.method && (
                 <div className="flex justify-between font-bold text-[10px] mt-1 text-gray-500">
                   <span>METODE:</span>
@@ -179,7 +175,7 @@ export default function ReceiptModal({
           </div>
         </div>
         
-        {/* FOOTER AKSI (Berubah tergantung Mode) */}
+        {/* FOOTER AKSI */}
         {mode === 'payment' ? (
           <div className="p-4 bg-gray-50 border-t grid grid-cols-3 gap-3 flex-none pb-safe">
             <button onClick={() => onProcessPayment('TUNAI')} className="bg-green-100 border border-green-500 text-green-700 py-3 rounded-lg font-bold hover:bg-green-200 flex flex-col items-center active:scale-95 transition">
@@ -209,7 +205,15 @@ export default function ReceiptModal({
                 <i className="fas fa-download"></i> Simpan
               </button>
             </div>
-            {/* Tombol Hapus Transaksi (Hanya Admin) */}
+            
+            {/* 🔥 TOMBOL LUNAS (Hanya muncul jika ada sisa hutang) */}
+            {onMarkLunas && remaining > 0 && (
+              <button onClick={() => onMarkLunas(transaction)} className="w-full mt-2 bg-green-500 text-white py-2.5 rounded-lg font-bold hover:bg-green-600 flex items-center justify-center gap-2 active:scale-95 transition text-sm shadow-md">
+                <i className="fas fa-hand-holding-usd text-lg"></i> Pelanggan Sudah Bayar (Lunas)
+              </button>
+            )}
+
+            {/* Tombol Hapus Transaksi */}
             {onDelete && (
               <button onClick={() => onDelete(transaction.id)} className="w-full mt-1 bg-red-50 text-red-600 border border-red-200 py-2 rounded-lg font-bold hover:bg-red-100 flex items-center justify-center gap-2 active:scale-95 transition text-sm">
                 <i className="fas fa-trash-alt"></i> Hapus Transaksi
