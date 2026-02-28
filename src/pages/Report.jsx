@@ -21,6 +21,9 @@ export default function Report({ businessData, currentUser, onNavigate }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   const shopOwnerId = businessData?.ownerId || currentUser?.uid;
+  
+  // 🔥 CEK ROLE: Apakah yang login ini Kasir?
+  const isKasir = businessData?.role === 'kasir';
 
   useEffect(() => {
     if (!shopOwnerId) return;
@@ -128,7 +131,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     });
   };
 
-  // 🔥 FUNGSI EXPORT PDF (DIADOPSI DARI V1)
+  // FUNGSI EXPORT PDF 
   const exportToPDF = () => {
     if (filteredData.length === 0) return Swal.fire('Kosong', 'Tidak ada data untuk diekspor', 'warning');
 
@@ -224,7 +227,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     doc.save(`Laporan_Penjualan_${filterLabel.replace(/\s+/g, '_')}.pdf`);
   };
 
-  // 🔥 FUNGSI EXPORT EXCEL (DIADOPSI DARI V1)
+  // FUNGSI EXPORT EXCEL 
   const exportToExcel = () => {
     if (filteredData.length === 0) return Swal.fire('Kosong', 'Tidak ada data', 'warning');
     
@@ -274,7 +277,6 @@ export default function Report({ businessData, currentUser, onNavigate }) {
             <h2 className="font-bold text-lg">Dashboard Analitik</h2>
           </div>
           <div className="flex gap-2">
-            {/* 🔥 UBAH TOMBOL EXPORT DI SINI */}
             <button onClick={exportToPDF} className="w-8 h-8 bg-purple-700 rounded-full flex items-center justify-center hover:bg-purple-600 transition shadow-sm"><i className="fas fa-file-pdf text-xs"></i></button>
             <button onClick={exportToExcel} className="w-8 h-8 bg-purple-700 rounded-full flex items-center justify-center hover:bg-purple-600 transition shadow-sm"><i className="fas fa-file-excel text-xs"></i></button>
           </div>
@@ -386,14 +388,16 @@ export default function Report({ businessData, currentUser, onNavigate }) {
 
       </div>
 
-      {/* MODAL STRUK */}
+      {/* MODAL STRUK DENGAN PROTEKSI HAPUS UNTUK KASIR */}
       <ReceiptModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         transaction={selectedTx}
         businessData={businessData}
         mode="view"
-        onDelete={handleDeleteTransaction}
+        // 🔥 HANYA ADMIN YANG BISA HAPUS TRANSAKSI
+        onDelete={!isKasir ? handleDeleteTransaction : null} 
+        // Kasir tetap bisa melunasi hutang
         onMarkLunas={handleMarkLunas} 
       />
       
