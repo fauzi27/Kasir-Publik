@@ -1,11 +1,12 @@
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import { signOut } from 'firebase/auth';
+import { collection, getDocs } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
 export default function Lobby({ businessData, onNavigate }) {
-  // === DETEKSI ROLE ===
-  // Jika role-nya 'kasir', maka isKasir bernilai true
+  // === DETEKSI ROLE & OWNER ===
   const isKasir = businessData?.role === 'kasir';
+  const shopOwnerId = businessData?.ownerId || auth.currentUser?.uid;
 
   // === AMBIL DATA TEMA DARI FIREBASE ===
   const themeData = businessData?.themeData || {};
@@ -40,13 +41,52 @@ export default function Lobby({ businessData, onNavigate }) {
     });
   };
 
+  // === FUNGSI DARK MODE ===
   const handleDarkMode = () => {
     document.body.classList.toggle('dark');
     localStorage.setItem('darkMode', document.body.classList.contains('dark'));
   };
 
-  const handleBackup = () => {
-    Swal.fire('Info', 'Fitur Backup CSV sedang dipindahkan ke React!', 'info');
+  // === 🔥 FUNGSI BACKUP CSV (ASLI) ===
+  const handleBackup = async () => {
+    if (!shopOwnerId) return Swal.fire('Error', 'Data Toko tidak ditemukan', 'error');
+
+    Swal.fire({ title: 'Menyiapkan Backup...', text: 'Mengambil data dari server', didOpen: () => Swal.showLoading() });
+    
+    try {
+      // 1. Tarik Data Menu
+      const menusSnap = await getDocs(collection(db, "users", shopOwnerId, "menus"));
+      let csvMenus = "Nama Menu,Kategori,Harga,Stok\n";
+      menusSnap.forEach(doc => {
+        const m = doc.data();
+        csvMenus += `${m.name},${m.category || '-'},${m.price},${m.stock || 0}\n`;
+      });
+
+      // 2. Tarik Data Transaksi
+      const trxSnap = await getDocs(collection(db, "users", shopOwnerId, "transactions"));
+      let csvTrx = "Tanggal,Pelanggan,Metode,Total,Sisa Hutang\n";
+      trxSnap.forEach(doc => {
+        const t = doc.data();
+        // Hilangkan koma pada tanggal agar tidak merusak format CSV
+        const tgl = t.date ? t.date.replace(/,/g, '') : new Date(t.timestamp).toLocaleString('id-ID').replace(/,/g, '');
+        csvTrx += `${tgl},${t.buyer || 'Umum'},${t.method || '-'},${t.total || 0},${t.remaining || 0}\n`;
+      });
+
+      // 3. Gabungkan dan Download
+      const finalCsv = `=== DATA MENU ===\n${csvMenus}\n\n=== DATA TRANSAKSI ===\n${csvTrx}`;
+      const blob = new Blob([finalCsv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Backup_ISZI_${new Date().toLocaleDateString('id-ID').replace(/\//g, '-')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      Swal.fire('Sukses', 'Data berhasil di-backup ke format CSV!', 'success');
+    } catch (error) {
+      Swal.fire('Error', 'Gagal membackup data: ' + error.message, 'error');
+    }
   };
 
   return (
@@ -77,7 +117,6 @@ export default function Lobby({ businessData, onNavigate }) {
         {/* GRID TOMBOL MENU */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full max-w-sm md:max-w-3xl flex-none">
           
-          {/* 1. Tombol Kasir (Bisa diakses Semua) */}
           <button 
             onClick={() => onNavigate('cashier')} 
             className={`col-span-2 md:col-span-4 hover:opacity-90 p-4 rounded-xl shadow-lg flex items-center gap-3 transition transform active:scale-95 text-left text-white ${cashierTheme.customHex ? '' : cashierTheme.color}`}
@@ -92,7 +131,6 @@ export default function Lobby({ businessData, onNavigate }) {
             </div>
           </button>
 
-          {/* 2. Tombol Laporan (Bisa diakses Semua) */}
           <button 
             onClick={() => onNavigate('report')} 
             className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${reportTheme.customHex ? '' : reportTheme.color}`}
@@ -102,7 +140,6 @@ export default function Lobby({ businessData, onNavigate }) {
             <h3 className="font-bold text-sm">{reportTheme.text}</h3>
           </button>
 
-          {/* 3. Tombol Manual (Bisa diakses Semua) */}
           <button 
             onClick={() => onNavigate('calculator')} 
             className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${calcTheme.customHex ? '' : calcTheme.color}`}
@@ -112,10 +149,8 @@ export default function Lobby({ businessData, onNavigate }) {
             <h3 className="font-bold text-xs">{calcTheme.text}</h3>
           </button>
 
-          {/* 🔥 AREA TERLARANG UNTUK KASIR 🔥 */}
           {!isKasir && (
             <>
-              {/* Tombol Stok */}
               <button 
                 onClick={() => onNavigate('stock')} 
                 className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${stockTheme.customHex ? '' : stockTheme.color}`}
@@ -125,7 +160,6 @@ export default function Lobby({ businessData, onNavigate }) {
                 <h3 className="font-bold text-sm">{stockTheme.text}</h3>
               </button>
 
-              {/* Tombol Tabel */}
               <button 
                 onClick={() => onNavigate('table')} 
                 className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${tableTheme.customHex ? '' : tableTheme.color}`}
@@ -135,7 +169,6 @@ export default function Lobby({ businessData, onNavigate }) {
                 <h3 className="font-bold text-xs">{tableTheme.text}</h3>
               </button>
 
-              {/* Tombol Admin */}
               <button 
                 onClick={() => onNavigate('admin')} 
                 className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${adminTheme.customHex ? '' : adminTheme.color}`}
@@ -145,7 +178,6 @@ export default function Lobby({ businessData, onNavigate }) {
                 <h3 className="font-bold text-xs">{adminTheme.text}</h3>
               </button>
 
-              {/* Tombol Setting */}
               <button 
                 onClick={() => onNavigate('settings')} 
                 className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${settingTheme.customHex ? '' : settingTheme.color}`}
@@ -159,7 +191,6 @@ export default function Lobby({ businessData, onNavigate }) {
 
         </div>
         
-        {/* FOOTER */}
         <p className="mt-8 text-xs text-gray-500 flex-none">ISZI v1.0 React (For more fitur contact us 081559557553)</p>
 
         <div className="flex gap-2 justify-center mt-2">
