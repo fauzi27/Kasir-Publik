@@ -1,23 +1,27 @@
+import { useState, useEffect } from 'react';
+import { auth, db } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+
+// === IMPORT SEMUA HALAMAN ===
 import Auth from './pages/Auth';
 import Lobby from './pages/Lobby';
 import Cashier from './pages/Cashier';
 import Admin from './pages/Admin';
 import Stock from './pages/Stock';
 import Report from './pages/Report';
-
-import { useState, useEffect } from 'react';
-import { auth, db } from './firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import Settings from './pages/Settings';
+import Table from './pages/Table';
+import Calculator from './pages/Calculator';
 
 function App() {
   // === STATE GLOBAL ===
   const [currentUser, setCurrentUser] = useState(null);
   const [businessData, setBusinessData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentView, setCurrentView] = useState('lobby'); // 'lobby', 'cashier', 'admin', dll
+  const [currentView, setCurrentView] = useState('lobby'); 
 
-  // === AUTH LISTENER (VERSI ANTI-MACET SAAT OFFLINE BOSs) ===
+  // === AUTH LISTENER (VERSI ANTI-MACET SAAT OFFLINE) ===
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -63,6 +67,7 @@ function App() {
         // BELUM LOGIN / LOGOUT
         setCurrentUser(null);
         setBusinessData(null);
+        setCurrentView('lobby'); // Reset view saat logout
       }
       
       // Matikan layar loading setelah proses cek selesai
@@ -84,14 +89,14 @@ function App() {
 
   // === RENDER UTAMA ===
   return (
-    <div className="App min-h-screen bg-gray-900 text-white">
+    <div className="App min-h-screen bg-gray-900 text-white font-sans overflow-x-hidden">
       {currentUser ? (
         // RENDER HALAMAN SESUAI STATE 'currentView'
         <>
           {currentView === 'lobby' && (
             <Lobby 
               businessData={businessData} 
-              onNavigate={(view) => setCurrentView(view)} 
+              onNavigate={setCurrentView} 
             />
           )}
           
@@ -99,7 +104,7 @@ function App() {
             <Cashier 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={(view) => setCurrentView(view)} 
+              onNavigate={setCurrentView} 
             />
           )}
 
@@ -107,7 +112,7 @@ function App() {
             <Admin 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={(view) => setCurrentView(view)} 
+              onNavigate={setCurrentView} 
             />
           )}
 
@@ -115,7 +120,7 @@ function App() {
             <Stock 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={(view) => setCurrentView(view)} 
+              onNavigate={setCurrentView} 
             />
           )}
 
@@ -123,26 +128,34 @@ function App() {
             <Report 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={(view) => setCurrentView(view)} 
+              onNavigate={setCurrentView} 
             />
           )}
 
-          {/* Fallback untuk halaman yang belum dibuat (Setting, Table, Calc) */}
-          {['settings', 'table', 'calculator'].includes(currentView) && (
-            <div className="flex flex-col items-center justify-center min-h-screen text-center p-6 bg-gray-900 text-white">
-              <i className="fas fa-tools text-5xl text-yellow-500 mb-4"></i>
-              <h2 className="text-xl font-bold mb-2">Segera Hadir!</h2>
-              <p className="text-gray-400 text-sm mb-6">Halaman {currentView} sedang dalam proses pemindahan ke React.</p>
-              <button 
-                onClick={() => setCurrentView('lobby')} 
-                className="px-6 py-2 bg-blue-600 rounded-full font-bold shadow-lg hover:bg-blue-700 transition active:scale-95"
-              >
-                Kembali ke Lobi
-              </button>
-            </div>
+          {currentView === 'settings' && (
+            <Settings 
+              businessData={businessData} 
+              currentUser={currentUser} 
+              onNavigate={setCurrentView} 
+            />
+          )}
+
+          {currentView === 'table' && (
+            <Table 
+              businessData={businessData} 
+              currentUser={currentUser} 
+              onNavigate={setCurrentView} 
+            />
+          )}
+
+          {currentView === 'calculator' && (
+            <Calculator 
+              onNavigate={setCurrentView} 
+            />
           )}
         </>
       ) : (
+        // JIKA BELUM LOGIN, TAMPILKAN HALAMAN AUTH
         <Auth />
       )}
     </div>
