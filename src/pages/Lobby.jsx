@@ -43,10 +43,9 @@ export default function Lobby({ businessData, onNavigate }) {
 
   // === FUNGSI DARK MODE ===
   const handleDarkMode = () => {
-    document.body.classList.toggle('dark');
-    localStorage.setItem('darkMode', document.body.classList.contains('dark'));
-  };
-
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
+};
   // === 🔥 FUNGSI BACKUP CSV (ASLI) ===
   const handleBackup = async () => {
     if (!shopOwnerId) return Swal.fire('Error', 'Data Toko tidak ditemukan', 'error');
