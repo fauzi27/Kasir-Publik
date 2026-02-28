@@ -56,7 +56,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const addToCart = (item) => {
     if (item.stock !== undefined && item.stock <= 0) {
       Swal.fire({toast: true, position: 'center', icon: 'warning', title: 'Stok Habis!', timer: 800, showConfirmButton: false});
-      return; // Cegah masuk keranjang kalau stok 0
+      return; 
     }
 
     setCart(prevCart => {
@@ -113,18 +113,24 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const handleCheckoutClick = () => {
     if (cart.length === 0) return Swal.fire('Kosong', 'Pilih menu terlebih dahulu', 'warning');
     
-    // Siapkan data struk sementara
+    // 🔥 PERBAIKAN: Struktur data disamakan persis dengan Vanilla JS (v1)
     const tempTx = {
       items: cart,
       total: cartTotal,
-      buyerName: buyerName || 'Pelanggan Umum',
+      buyer: buyerName || 'Pelanggan Umum', // v1 pakai 'buyer'
       timestamp: Date.now(),
-      cashierName: currentUser?.email?.split('@')[0] || 'Kasir', // Ambil nama depan email
-      paymentMethod: null
+      date: new Date().toLocaleString('id-ID'), // Penting untuk v1
+      operatorName: currentUser?.email?.split('@')[0] || 'Kasir', // v1 pakai 'operatorName'
+      
+      // Sediakan default payment agar tidak error di laporan v1
+      paid: cartTotal,
+      change: 0,
+      remaining: 0,
+      method: null // v1 pakai 'method', bukan 'paymentMethod'
     };
 
     setCurrentTransaction(tempTx);
-    setModalMode('payment'); // Buka modal di mode Pilih Pembayaran
+    setModalMode('payment'); 
     setIsModalOpen(true);
   };
 
@@ -132,31 +138,39 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
     try {
-      const batch = writeBatch(db); // Gunakan Batch agar jika satu gagal, gagal semua (Aman)
+      const batch = writeBatch(db); 
       
       // 1. Simpan Transaksi Baru
       const txRef = doc(collection(db, "users", shopOwnerId, "transactions"));
-      const finalTx = { ...currentTransaction, paymentMethod: method, id: txRef.id };
+      
+      // Masukkan metode pembayaran yang dipilih (TUNAI / QRIS / HUTANG)
+      const finalTx = { ...currentTransaction, method: method, id: txRef.id };
+      
+      // Jika hutang, sesuaikan remaining-nya
+      if (method === 'HUTANG') {
+        finalTx.remaining = finalTx.total;
+        finalTx.paid = 0;
+      }
+
       batch.set(txRef, finalTx);
       
       // 2. Potong Stok Menu
       cart.forEach(item => {
-        // Jangan potong stok jika itu item dari Kalkulator Manual
         if (!item.id.toString().startsWith('manual_')) {
           const menuData = menus.find(m => m.id === item.id);
           if (menuData && menuData.stock !== undefined) {
             const menuRef = doc(db, "users", shopOwnerId, "menus", item.id);
-            const newStock = Math.max(0, menuData.stock - item.qty); // Cegah minus
+            const newStock = Math.max(0, menuData.stock - item.qty); 
             batch.update(menuRef, { stock: newStock });
           }
         }
       });
       
-      await batch.commit(); // Eksekusi ke database
+      await batch.commit(); 
       
       Swal.fire({ icon: 'success', title: 'Berhasil!', text: 'Pembayaran diterima.', timer: 1500, showConfirmButton: false });
       
-      // 3. Ubah modal ke mode 'view' (untuk print/WA), dan kosongkan keranjang
+      // 3. Ubah modal ke mode 'view', dan kosongkan keranjang
       setCurrentTransaction(finalTx);
       setModalMode('view');
       setCart([]);
