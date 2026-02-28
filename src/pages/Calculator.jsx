@@ -10,7 +10,7 @@ export default function Calculator({ onNavigate }) {
   const appendCalc = (val) => {
     setDisplay(prev => {
       if (prev === '0') return val;
-      // Batasi panjang digit agar tidak error
+      // Batasi panjang digit agar tidak error (maks 10 digit, alias puluhan miliar)
       if (prev.length > 10) return prev; 
       return prev + val;
     });
@@ -25,18 +25,35 @@ export default function Calculator({ onNavigate }) {
     });
   };
 
-  // === FUNGSI TAMBAH KE LIST ===
-  const addToManualList = () => {
+  // === 🔥 PERBAIKAN: FUNGSI TAMBAH KE LIST DENGAN PROMPT KETERANGAN ===
+  const addToManualList = async () => {
     const price = parseInt(display);
+    
     if (price > 0) {
+      // Sama seperti V1, kita minta keterangan sebelum masuk list
+      const { value: keterangan, isDismissed } = await Swal.fire({
+        title: 'Keterangan Item',
+        input: 'text',
+        inputLabel: 'Item apa ini? (opsional)',
+        inputPlaceholder: 'Cth: Tambah Kerupuk',
+        showCancelButton: true,
+        confirmButtonText: 'Tambahkan'
+      });
+
+      // Jika kasir membatalkan popup, jangan masukkan item
+      if (isDismissed) return;
+
       const newItem = {
         id: 'manual_' + Date.now(),
-        name: 'Item Manual',
+        name: keterangan?.trim() || 'Item Manual', // Gunakan inputan atau fallback
         price: price,
         qty: 1
       };
-      setManualItems([...manualItems, newItem]);
-      setDisplay('0'); // Reset layar setelah ditambah
+
+      setManualItems(prev => [...prev, newItem]);
+      setDisplay('0'); // Reset layar kalkulator setelah berhasil ditambah
+    } else {
+      Swal.fire({toast: true, position: 'top', icon: 'warning', title: 'Input harga dulu!', timer: 1000, showConfirmButton: false});
     }
   };
 
@@ -44,12 +61,11 @@ export default function Calculator({ onNavigate }) {
     setManualItems(manualItems.filter(item => item.id !== id));
   };
 
-  // === FUNGSI SELESAI (MASUK KERANJANG) ===
+  // === FUNGSI SELESAI (MASUK KERANJANG KASIR) ===
   const finishManualSession = () => {
     if (manualItems.length === 0) return;
     
-    // Karena State Cart ada di Cashier.jsx, untuk sementara kita simpan ke LocalStorage
-    // Nanti saat digabung, Cashier.jsx bisa membaca data ini
+    // Simpan ke LocalStorage agar Cashier.jsx bisa membacanya di useEffect
     const existingCart = JSON.parse(localStorage.getItem('temp_manual_cart') || '[]');
     const newCart = [...existingCart, ...manualItems];
     localStorage.setItem('temp_manual_cart', JSON.stringify(newCart));
@@ -57,11 +73,11 @@ export default function Calculator({ onNavigate }) {
     Swal.fire({
       icon: 'success',
       title: 'Masuk Keranjang!',
-      text: `${manualItems.length} item manual ditambahkan.`,
-      timer: 1500,
+      text: `${manualItems.length} item siap dibayar.`,
+      timer: 1200,
       showConfirmButton: false
     }).then(() => {
-      onNavigate('cashier'); // Otomatis pindah ke halaman Kasir
+      onNavigate('cashier'); // Pindah ke halaman Kasir
     });
   };
 
@@ -95,7 +111,8 @@ export default function Calculator({ onNavigate }) {
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-bold text-gray-400 w-4">{index + 1}.</span>
                   <div>
-                    <p className="font-bold text-sm text-gray-700">{item.name}</p>
+                    {/* Tampilkan keterangan yang sudah diinput */}
+                    <p className="font-bold text-sm text-gray-700">{item.name}</p> 
                     <p className="text-xs text-blue-600 font-bold">Rp {item.price.toLocaleString('id-ID')}</p>
                   </div>
                 </div>
@@ -117,7 +134,7 @@ export default function Calculator({ onNavigate }) {
           <div className="bg-white p-4 rounded-xl shadow-sm text-right border border-gray-200 relative overflow-hidden">
             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 font-bold text-xl">Rp</div>
             <p className="text-[10px] text-gray-400 absolute right-4 top-2">Input Harga Baru</p>
-            <div className="text-4xl font-extrabold text-gray-800 tracking-tight mt-3">
+            <div className="text-4xl font-extrabold text-gray-800 tracking-tight mt-3 truncate">
               {parseInt(display).toLocaleString('id-ID')}
             </div>
           </div>
@@ -138,10 +155,12 @@ export default function Calculator({ onNavigate }) {
               <i className="fas fa-backspace"></i>
             </button>
             
-            {/* Baris 3 & 4 (Digabung dengan ADD) */}
+            {/* Baris 3 & 4 */}
             <button onClick={() => appendCalc('1')} className="bg-white rounded-xl shadow-sm border border-gray-100 font-bold text-2xl text-gray-700 active:bg-gray-200 transition">1</button>
             <button onClick={() => appendCalc('2')} className="bg-white rounded-xl shadow-sm border border-gray-100 font-bold text-2xl text-gray-700 active:bg-gray-200 transition">2</button>
             <button onClick={() => appendCalc('3')} className="bg-white rounded-xl shadow-sm border border-gray-100 font-bold text-2xl text-gray-700 active:bg-gray-200 transition">3</button>
+            
+            {/* 🔥 Tombol ADD memanggil fungsi baru */}
             <button onClick={addToManualList} className="row-span-2 bg-blue-100 text-blue-600 border border-blue-200 rounded-xl shadow-sm active:bg-blue-200 transition flex flex-col items-center justify-center gap-1">
               <i className="fas fa-plus text-2xl"></i> <span className="text-[10px] font-bold">ADD</span>
             </button>
