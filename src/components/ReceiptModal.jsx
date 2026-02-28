@@ -19,9 +19,11 @@ export default function ReceiptModal({
 
   const items = transaction.items || [];
   const total = transaction.total || 0;
-  const dateStr = transaction.timestamp 
+  
+  // 🔥 PERBAIKAN: Prioritaskan membaca 'date' bawaan v1, jika tidak ada baru gunakan timestamp
+  const dateStr = transaction.date || (transaction.timestamp 
     ? new Date(transaction.timestamp).toLocaleString('id-ID') 
-    : new Date().toLocaleString('id-ID');
+    : new Date().toLocaleString('id-ID'));
 
   // === FUNGSI SIMPAN GAMBAR STRUK (html2canvas) ===
   const saveReceiptImage = async () => {
@@ -52,7 +54,8 @@ export default function ReceiptModal({
 
     let text = `*NOTA PEMBELIAN - ${businessData?.shopName?.toUpperCase() || 'ISZI'}*\n`;
     text += `📅 ${dateStr}\n`;
-    text += `👤 Pelanggan: ${transaction.buyerName || 'Umum'}\n`;
+    // 🔥 PERBAIKAN: Gunakan transaction.buyer
+    text += `👤 Pelanggan: ${transaction.buyer || 'Umum'}\n`;
     text += `--------------------------------\n`;
     
     items.forEach(i => {
@@ -61,7 +64,8 @@ export default function ReceiptModal({
     
     text += `--------------------------------\n`;
     text += `*TOTAL : Rp ${total.toLocaleString('id-ID')}*\n`;
-    if (transaction.paymentMethod) text += `*METODE : ${transaction.paymentMethod}*\n`;
+    // 🔥 PERBAIKAN: Gunakan transaction.method
+    if (transaction.method) text += `*METODE : ${transaction.method}*\n`;
     text += `--------------------------------\n`;
     text += `Terima kasih atas kunjungannya! 🙏`;
 
@@ -95,8 +99,9 @@ export default function ReceiptModal({
             
             <div className="text-[10px] mb-4 border-b border-dashed border-gray-300 pb-2">
               <div className="flex justify-between"><span>Tgl:</span> <span>{dateStr}</span></div>
-              <div className="flex justify-between"><span>Plg:</span> <span className="font-bold">{transaction.buyerName || 'Umum'}</span></div>
-              <div className="flex justify-between"><span>Kasir:</span> <span>{transaction.cashierName || 'Admin'}</span></div>
+              {/* 🔥 PERBAIKAN: Gunakan transaction.buyer dan transaction.operatorName */}
+              <div className="flex justify-between"><span>Plg:</span> <span className="font-bold">{transaction.buyer || 'Umum'}</span></div>
+              <div className="flex justify-between"><span>Kasir:</span> <span>{transaction.operatorName || 'Admin'}</span></div>
             </div>
 
             <div className="mb-4">
@@ -116,10 +121,11 @@ export default function ReceiptModal({
                 <span>TOTAL:</span>
                 <span>Rp {total.toLocaleString('id-ID')}</span>
               </div>
-              {transaction.paymentMethod && (
+              {/* 🔥 PERBAIKAN: Gunakan transaction.method */}
+              {transaction.method && (
                 <div className="flex justify-between font-bold text-[10px] mt-1 text-gray-500">
                   <span>METODE:</span>
-                  <span>{transaction.paymentMethod}</span>
+                  <span>{transaction.method}</span>
                 </div>
               )}
             </div>
