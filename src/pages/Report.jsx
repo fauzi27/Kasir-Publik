@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 import ReceiptModal from '../components/ReceiptModal';
 
@@ -96,10 +96,41 @@ export default function Report({ businessData, currentUser, onNavigate }) {
         Swal.fire({ title: 'Menghapus...', didOpen: () => Swal.showLoading() });
         try {
           await deleteDoc(doc(db, "users", shopOwnerId, "transactions", txId));
-          setIsModalOpen(false); // Tutup modal setelah dihapus
+          setIsModalOpen(false);
           Swal.fire({ icon: 'success', title: 'Terhapus!', timer: 1200, showConfirmButton: false });
         } catch (error) {
           Swal.fire('Error', 'Gagal menghapus: ' + error.message, 'error');
+        }
+      }
+    });
+  };
+
+  // 🔥 BARU: FUNGSI PELUNASAN HUTANG
+  const handleMarkLunas = async (tx) => {
+    Swal.fire({
+      title: 'Pelanggan Bayar Lunas?',
+      text: `Sisa hutang Rp ${(tx.remaining || 0).toLocaleString('id-ID')} akan dilunasi dan masuk ke Kas Tunai.`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#10b981', // Warna hijau
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Ya, Lunas!',
+      cancelButtonText: 'Batal'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        Swal.fire({ title: 'Memproses...', didOpen: () => Swal.showLoading() });
+        try {
+          const txRef = doc(db, "users", shopOwnerId, "transactions", tx.id);
+          // Update ke Firebase: Jadikan lunas dan ubah ke TUNAI
+          await updateDoc(txRef, {
+            remaining: 0,
+            paid: tx.total,
+            method: 'TUNAI' 
+          });
+          setIsModalOpen(false);
+          Swal.fire({ icon: 'success', title: 'Hutang Lunas!', timer: 1500, showConfirmButton: false });
+        } catch (error) {
+          Swal.fire('Error', 'Gagal melunasi: ' + error.message, 'error');
         }
       }
     });
@@ -249,6 +280,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
         businessData={businessData}
         mode="view"
         onDelete={handleDeleteTransaction}
+        onMarkLunas={handleMarkLunas} // 🔥 Props baru untuk Modal
       />
       
     </div>
