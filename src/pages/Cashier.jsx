@@ -207,7 +207,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         }
       });
       
-      await batch.commit(); 
+      batch.commit(); 
       
       let successMsg = finalMethod === 'TUNAI' ? `Kembalian: Rp ${changeAmount.toLocaleString('id-ID')}` : 'Berhasil Disimpan';
       Swal.fire({ icon: 'success', title: 'Transaksi Sukses', text: successMsg, timer: 1800, showConfirmButton: false });
