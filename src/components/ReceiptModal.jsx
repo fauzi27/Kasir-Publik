@@ -14,18 +14,26 @@ export default function ReceiptModal({
   const [buyerWA, setBuyerWA] = useState('');
   const receiptRef = useRef(null);
 
-  // Jika modal tidak disuruh buka, jangan tampilkan apa-apa
   if (!isOpen || !transaction) return null;
 
   const items = transaction.items || [];
   const total = transaction.total || 0;
   
-  // 🔥 PERBAIKAN: Prioritaskan membaca 'date' bawaan v1, jika tidak ada baru gunakan timestamp
+  // Baca 'date' bawaan v1, jika tidak ada gunakan timestamp
   const dateStr = transaction.date || (transaction.timestamp 
     ? new Date(transaction.timestamp).toLocaleString('id-ID') 
     : new Date().toLocaleString('id-ID'));
 
-  // === FUNGSI SIMPAN GAMBAR STRUK (html2canvas) ===
+  // 🔥 PERBAIKAN 1: Logika Nama & Alamat Toko yang lebih kuat
+  const shopName = businessData?.shopName || businessData?.name || 'ISZI POS';
+  const shopAddress = businessData?.shopAddress || businessData?.address || 'Alamat Belum Diatur';
+
+  // Ambil data nominal jika sudah diproses
+  const paid = transaction.paid || 0;
+  const change = transaction.change || 0;
+  const remaining = transaction.remaining || 0;
+
+  // === FUNGSI SIMPAN GAMBAR STRUK ===
   const saveReceiptImage = async () => {
     if (!receiptRef.current) return;
     
@@ -35,7 +43,7 @@ export default function ReceiptModal({
       const imgData = canvas.toDataURL('image/jpeg', 0.9);
       
       const link = document.createElement('a');
-      link.download = `Nota_${businessData?.shopName || 'ISZI'}_${Date.now()}.jpg`;
+      link.download = `Nota_${shopName}_${Date.now()}.jpg`;
       link.href = imgData;
       link.click();
       
@@ -49,12 +57,11 @@ export default function ReceiptModal({
   const sendToWA = () => {
     if (!buyerWA) return Swal.fire('Oops', 'Masukkan nomor WA pelanggan dulu', 'warning');
     
-    let phone = buyerWA.replace(/\D/g, ''); // Buang selain angka
-    if (phone.startsWith('0')) phone = '62' + phone.slice(1); // Ubah 0 jadi 62
+    let phone = buyerWA.replace(/\D/g, ''); 
+    if (phone.startsWith('0')) phone = '62' + phone.slice(1); 
 
-    let text = `*NOTA PEMBELIAN - ${businessData?.shopName?.toUpperCase() || 'ISZI'}*\n`;
+    let text = `*NOTA PEMBELIAN - ${shopName.toUpperCase()}*\n`;
     text += `📅 ${dateStr}\n`;
-    // 🔥 PERBAIKAN: Gunakan transaction.buyer
     text += `👤 Pelanggan: ${transaction.buyer || 'Umum'}\n`;
     text += `--------------------------------\n`;
     
@@ -64,8 +71,18 @@ export default function ReceiptModal({
     
     text += `--------------------------------\n`;
     text += `*TOTAL : Rp ${total.toLocaleString('id-ID')}*\n`;
-    // 🔥 PERBAIKAN: Gunakan transaction.method
-    if (transaction.method) text += `*METODE : ${transaction.method}*\n`;
+    if (transaction.method) text += `METODE : ${transaction.method}\n`;
+    
+    // Tambahan detail bayar untuk WA
+    if (transaction.method === 'TUNAI' && paid > 0) {
+      text += `Bayar  : Rp ${paid.toLocaleString('id-ID')}\n`;
+      text += `Kembali: Rp ${change.toLocaleString('id-ID')}\n`;
+    }
+    if (remaining > 0) {
+      text += `Dibayar: Rp ${paid.toLocaleString('id-ID')}\n`;
+      text += `*Sisa Hutang: Rp ${remaining.toLocaleString('id-ID')}*\n`;
+    }
+
     text += `--------------------------------\n`;
     text += `Terima kasih atas kunjungannya! 🙏`;
 
@@ -93,13 +110,12 @@ export default function ReceiptModal({
         <div className="p-6 overflow-y-auto bg-white flex-1 relative hide-scrollbar">
           <div ref={receiptRef} className="font-mono text-sm text-gray-800 bg-white p-4 border border-gray-200 shadow-sm rounded">
             <div className="text-center mb-4 border-b-2 border-dashed border-gray-400 pb-4">
-              <h2 className="font-extrabold text-lg">{businessData?.shopName || 'ISZI POS'}</h2>
-              <p className="text-[10px] text-gray-500">{businessData?.shopAddress || 'Alamat Toko'}</p>
+              <h2 className="font-extrabold text-lg">{shopName}</h2>
+              <p className="text-[10px] text-gray-500">{shopAddress}</p>
             </div>
             
             <div className="text-[10px] mb-4 border-b border-dashed border-gray-300 pb-2">
               <div className="flex justify-between"><span>Tgl:</span> <span>{dateStr}</span></div>
-              {/* 🔥 PERBAIKAN: Gunakan transaction.buyer dan transaction.operatorName */}
               <div className="flex justify-between"><span>Plg:</span> <span className="font-bold">{transaction.buyer || 'Umum'}</span></div>
               <div className="flex justify-between"><span>Kasir:</span> <span>{transaction.operatorName || 'Admin'}</span></div>
             </div>
@@ -121,14 +137,42 @@ export default function ReceiptModal({
                 <span>TOTAL:</span>
                 <span>Rp {total.toLocaleString('id-ID')}</span>
               </div>
-              {/* 🔥 PERBAIKAN: Gunakan transaction.method */}
+              
+              {/* 🔥 PERBAIKAN 2: Render Nominal Kembalian & Hutang */}
               {transaction.method && (
                 <div className="flex justify-between font-bold text-[10px] mt-1 text-gray-500">
                   <span>METODE:</span>
                   <span>{transaction.method}</span>
                 </div>
               )}
+              
+              {transaction.method === 'TUNAI' && paid > 0 && remaining === 0 && (
+                <div className="mt-2 pt-2 border-t border-dashed border-gray-200">
+                  <div className="flex justify-between text-xs">
+                    <span>Bayar:</span>
+                    <span>Rp {paid.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold mt-0.5">
+                    <span>Kembali:</span>
+                    <span>Rp {change.toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
+              )}
+
+              {remaining > 0 && (
+                <div className="mt-2 pt-2 border-t border-dashed border-gray-200">
+                  <div className="flex justify-between text-xs">
+                    <span>Dibayar:</span>
+                    <span>Rp {paid.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-red-600 mt-0.5">
+                    <span>Sisa Hutang:</span>
+                    <span>Rp {remaining.toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
+              )}
             </div>
+            
             <div className="text-center mt-6 text-[9px] text-gray-400 italic">
               * Terima Kasih *<br/>Aplikasi Kasir ISZI
             </div>
