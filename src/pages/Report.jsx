@@ -54,11 +54,22 @@ export default function Report({ businessData, currentUser, onNavigate }) {
 
   const filteredData = getFilteredTransactions();
 
-  // === KALKULASI OTOMATIS (KEKUATAN REACT) ===
+  // === KALKULASI OTOMATIS (SINKRON DENGAN RUMUS V1) ===
   const totalOmzet = filteredData.reduce((sum, t) => sum + (t.total || 0), 0);
-  const totalTunai = filteredData.reduce((sum, t) => sum + (t.paymentMethod === 'TUNAI' ? (t.total || 0) : 0), 0);
-  const totalQRIS = filteredData.reduce((sum, t) => sum + (t.paymentMethod === 'QRIS' ? (t.total || 0) : 0), 0);
-  const totalHutang = filteredData.reduce((sum, t) => sum + (t.paymentMethod === 'HUTANG' ? (t.total || 0) : 0), 0);
+  
+  // 🔥 PERBAIKAN: Hitung Tunai Murni (Total kurangi hutang jika ada)
+  const totalTunai = filteredData.reduce((sum, t) => {
+    if (t.method === 'TUNAI') {
+      const tunaiMurni = (t.total || 0) - (t.remaining || 0);
+      return sum + (tunaiMurni > 0 ? tunaiMurni : 0);
+    }
+    return sum;
+  }, 0);
+
+  // 🔥 PERBAIKAN: Gunakan key t.method dan t.remaining
+  const totalQRIS = filteredData.reduce((sum, t) => sum + (t.method === 'QRIS' ? (t.total || 0) : 0), 0);
+  const totalHutang = filteredData.reduce((sum, t) => sum + (t.remaining || (t.method === 'HUTANG' ? (t.total || 0) : 0)), 0);
+  
   const totalTransaksi = filteredData.length;
 
   // === MOCKUP EXPORT (Bisa diaktifkan nanti) ===
@@ -141,13 +152,14 @@ export default function Report({ businessData, currentUser, onNavigate }) {
             filteredData.map(t => (
               <div key={t.id} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
                 <div>
-                  <p className="font-bold text-sm text-gray-800">{t.buyerName || 'Pelanggan Umum'}</p>
-                  <p className="text-[10px] text-gray-500">{new Date(t.timestamp).toLocaleString('id-ID')}</p>
+                  {/* 🔥 PERBAIKAN: Gunakan t.buyer dan t.date agar sinkron dengan v1 */}
+                  <p className="font-bold text-sm text-gray-800">{t.buyer || 'Pelanggan Umum'}</p>
+                  <p className="text-[10px] text-gray-500">{t.date || new Date(t.timestamp).toLocaleString('id-ID')}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-sm text-blue-700">Rp {(t.total || 0).toLocaleString('id-ID')}</p>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${t.paymentMethod === 'TUNAI' ? 'bg-green-100 text-green-700' : t.paymentMethod === 'QRIS' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700'}`}>
-                    {t.paymentMethod || 'TUNAI'}
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${t.method === 'TUNAI' ? 'bg-green-100 text-green-700' : t.method === 'QRIS' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700'}`}>
+                    {t.method || 'TUNAI'}
                   </span>
                 </div>
               </div>
