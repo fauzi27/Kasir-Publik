@@ -155,7 +155,7 @@ function App() {
           )}
         </>
       ) : (
-        // JIKA BELUM LOGIN, TAMPILKAN HALAMAN AUTH
+        // JIKA BELUM LOGIN, TAMPILKAN HALAMAN AUTH BoSS
         <Auth />
       )}
     </div>
