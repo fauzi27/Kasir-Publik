@@ -236,7 +236,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     <div className="flex flex-col h-screen bg-gray-50 text-gray-800 relative">
       
       {/* HEADER KASIR */}
-      <div className="bg-white shadow-sm z-10 flex-none w-full">
+      <div className="bg-white dark:bg-gray-800 shadow-sm z-10 flex-none w-full">
         <div className="flex items-center justify-between px-4 py-2 border-b">
           <button onClick={() => onNavigate('lobby')} className="text-gray-600 hover:text-gray-900 active:scale-90 transition p-2">
             <i className="fas fa-arrow-left text-lg"></i>
@@ -253,7 +253,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         <div className="flex gap-2 p-2 overflow-x-auto whitespace-nowrap bg-gray-100 hide-scrollbar border-b border-gray-200">
           <button 
             onClick={() => setActiveCategory('all')} 
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-600 border-gray-300'}`}
+            className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-600 border-gray-300'}`}
           >
             Semua
           </button>
@@ -261,13 +261,13 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
             <button 
               key={cat.uid}
               onClick={() => setActiveCategory(cat.name.toLowerCase())} 
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === cat.name.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300'}`}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === cat.name.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 border-gray-300'}`}
             >
               {cat.name}
             </button>
           ))}
         </div>
-        <div className="p-2 bg-white">
+        <div className="p-2 bg-white dark:bg-gray-800">
           <input 
             type="text" 
             placeholder="Cari nama menu..." 
@@ -291,7 +291,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
               <div 
                 key={item.id} 
                 onClick={() => addToCart(item)}
-                className={`p-2 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white'}`}
+                className={`p-2 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white dark:bg-gray-800'}`}
               >
                 {item.image ? (
                   <img src={item.image.replace('/upload/', '/upload/w_150,h_150,c_fill,q_auto,f_auto/')} alt={item.name} className="w-14 h-14 object-cover rounded-full shadow-sm mb-2 flex-none border-2 border-white" />
@@ -316,8 +316,8 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       </div>
 
       {/* AREA KERANJANG (CART) BAWAH */}
-      <div className="bg-white border-t border-gray-200 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20 flex-none h-[40%] flex flex-col w-full">
-        <div className="p-3 border-b border-gray-100 bg-white flex items-center gap-2 flex-none rounded-t-3xl">
+      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20 flex-none h-[40%] flex flex-col w-full">
+        <div className="p-3 border-b border-gray-100 bg-white dark:bg-gray-800 flex items-center gap-2 flex-none rounded-t-3xl">
           <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
             <i className="fas fa-user"></i>
           </div>
@@ -341,7 +341,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
             </div>
           ) : (
             cart.map(item => (
-              <div key={item.id} className="flex justify-between items-center mb-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+              <div key={item.id} className="flex justify-between items-center mb-2 bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm border border-gray-100">
                 <div className="flex-1 pr-2">
                   <div className="font-bold text-xs text-gray-800 truncate">{item.name}</div>
                   <div className="text-[10px] text-gray-500 font-medium">{item.qty} x {item.price.toLocaleString('id-ID')}</div>
@@ -349,9 +349,9 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
                 <div className="flex items-center gap-3">
                   <span className="font-bold text-sm text-gray-800 w-20 text-right">Rp {(item.price * item.qty).toLocaleString('id-ID')}</span>
                   <div className="flex items-center bg-gray-100 rounded-lg border border-gray-200 p-0.5">
-                    <button onClick={() => updateQty(item.id, -1)} className="w-8 h-8 text-gray-600 hover:text-red-500 hover:bg-white rounded-md text-sm font-bold transition shadow-sm">-</button>
+                    <button onClick={() => updateQty(item.id, -1)} className="w-8 h-8 text-gray-600 hover:text-red-500 hover:bg-white dark:bg-gray-800 rounded-md text-sm font-bold transition shadow-sm">-</button>
                     <span className="w-6 text-center text-xs font-bold text-gray-700">{item.qty}</span>
-                    <button onClick={() => updateQty(item.id, 1)} className="w-8 h-8 text-gray-600 hover:text-blue-500 hover:bg-white rounded-md text-sm font-bold transition shadow-sm">+</button>
+                    <button onClick={() => updateQty(item.id, 1)} className="w-8 h-8 text-gray-600 hover:text-blue-500 hover:bg-white dark:bg-gray-800 rounded-md text-sm font-bold transition shadow-sm">+</button>
                   </div>
                 </div>
               </div>
