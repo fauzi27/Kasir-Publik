@@ -3,15 +3,17 @@ import { signOut } from 'firebase/auth';
 import Swal from 'sweetalert2';
 
 export default function Lobby({ businessData, onNavigate }) {
+  // === DETEKSI ROLE ===
+  // Jika role-nya 'kasir', maka isKasir bernilai true
+  const isKasir = businessData?.role === 'kasir';
+
   // === AMBIL DATA TEMA DARI FIREBASE ===
   const themeData = businessData?.themeData || {};
 
-  // Helper untuk mendapatkan nilai tema, jika kosong pakai warna default bawaan
   const getTheme = (id, defaultColor, defaultText, defaultIcon) => {
     return themeData[id] || { color: defaultColor, text: defaultText, icon: defaultIcon, customHex: '' };
   };
 
-  // Menerjemahkan data tema untuk masing-masing elemen
   const themeBg = getTheme('lobby_bg', 'bg-gray-900', '', '');
   const themeTitle = getTheme('lobby_title', 'text-yellow-400', '', '');
   
@@ -38,14 +40,11 @@ export default function Lobby({ businessData, onNavigate }) {
     });
   };
 
-  // === FUNGSI DARK MODE ===
   const handleDarkMode = () => {
     document.body.classList.toggle('dark');
-    const isDark = document.body.classList.contains('dark');
-    localStorage.setItem('darkMode', isDark);
+    localStorage.setItem('darkMode', document.body.classList.contains('dark'));
   };
 
-  // === FUNGSI BACKUP (Mockup sementara) ===
   const handleBackup = () => {
     Swal.fire('Info', 'Fitur Backup CSV sedang dipindahkan ke React!', 'info');
   };
@@ -68,12 +67,17 @@ export default function Lobby({ businessData, onNavigate }) {
           <p className="text-gray-400 text-sm">
             {businessData?.shopAddress || businessData?.address || 'Nusadua Bali'}
           </p>
+          {isKasir && (
+            <span className="inline-block mt-2 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full">
+              Mode Kasir
+            </span>
+          )}
         </div>
 
         {/* GRID TOMBOL MENU */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full max-w-sm md:max-w-3xl flex-none">
           
-          {/* Tombol Kasir */}
+          {/* 1. Tombol Kasir (Bisa diakses Semua) */}
           <button 
             onClick={() => onNavigate('cashier')} 
             className={`col-span-2 md:col-span-4 hover:opacity-90 p-4 rounded-xl shadow-lg flex items-center gap-3 transition transform active:scale-95 text-left text-white ${cashierTheme.customHex ? '' : cashierTheme.color}`}
@@ -88,17 +92,7 @@ export default function Lobby({ businessData, onNavigate }) {
             </div>
           </button>
 
-          {/* Tombol Stok */}
-          <button 
-            onClick={() => onNavigate('stock')} 
-            className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${stockTheme.customHex ? '' : stockTheme.color}`}
-            style={stockTheme.customHex ? { backgroundColor: stockTheme.customHex } : {}}
-          >
-            <i className={`fas ${stockTheme.icon} text-2xl mb-1`}></i>
-            <h3 className="font-bold text-sm">{stockTheme.text}</h3>
-          </button>
-
-          {/* Tombol Laporan */}
+          {/* 2. Tombol Laporan (Bisa diakses Semua) */}
           <button 
             onClick={() => onNavigate('report')} 
             className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${reportTheme.customHex ? '' : reportTheme.color}`}
@@ -107,18 +101,8 @@ export default function Lobby({ businessData, onNavigate }) {
             <i className={`fas ${reportTheme.icon} text-2xl mb-1`}></i>
             <h3 className="font-bold text-sm">{reportTheme.text}</h3>
           </button>
-        
-          {/* Tombol Tabel */}
-          <button 
-            onClick={() => onNavigate('table')} 
-            className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${tableTheme.customHex ? '' : tableTheme.color}`}
-            style={tableTheme.customHex ? { backgroundColor: tableTheme.customHex } : {}}
-          >
-            <i className={`fas ${tableTheme.icon} text-2xl mb-1`}></i>
-            <h3 className="font-bold text-xs">{tableTheme.text}</h3>
-          </button>
 
-          {/* Tombol Manual */}
+          {/* 3. Tombol Manual (Bisa diakses Semua) */}
           <button 
             onClick={() => onNavigate('calculator')} 
             className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${calcTheme.customHex ? '' : calcTheme.color}`}
@@ -128,25 +112,51 @@ export default function Lobby({ businessData, onNavigate }) {
             <h3 className="font-bold text-xs">{calcTheme.text}</h3>
           </button>
 
-          {/* Tombol Admin */}
-          <button 
-            onClick={() => onNavigate('admin')} 
-            className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${adminTheme.customHex ? '' : adminTheme.color}`}
-            style={adminTheme.customHex ? { backgroundColor: adminTheme.customHex } : {}}
-          >
-            <i className={`fas ${adminTheme.icon} text-2xl mb-1`}></i>
-            <h3 className="font-bold text-xs">{adminTheme.text}</h3>
-          </button>
+          {/* 🔥 AREA TERLARANG UNTUK KASIR 🔥 */}
+          {!isKasir && (
+            <>
+              {/* Tombol Stok */}
+              <button 
+                onClick={() => onNavigate('stock')} 
+                className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${stockTheme.customHex ? '' : stockTheme.color}`}
+                style={stockTheme.customHex ? { backgroundColor: stockTheme.customHex } : {}}
+              >
+                <i className={`fas ${stockTheme.icon} text-2xl mb-1`}></i>
+                <h3 className="font-bold text-sm">{stockTheme.text}</h3>
+              </button>
 
-          {/* Tombol Setting */}
-          <button 
-            onClick={() => onNavigate('settings')} 
-            className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${settingTheme.customHex ? '' : settingTheme.color}`}
-            style={settingTheme.customHex ? { backgroundColor: settingTheme.customHex } : {}}
-          >
-            <i className={`fas ${settingTheme.icon} text-2xl mb-1`}></i>
-            <h3 className="font-bold text-xs">{settingTheme.text}</h3>
-          </button>
+              {/* Tombol Tabel */}
+              <button 
+                onClick={() => onNavigate('table')} 
+                className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${tableTheme.customHex ? '' : tableTheme.color}`}
+                style={tableTheme.customHex ? { backgroundColor: tableTheme.customHex } : {}}
+              >
+                <i className={`fas ${tableTheme.icon} text-2xl mb-1`}></i>
+                <h3 className="font-bold text-xs">{tableTheme.text}</h3>
+              </button>
+
+              {/* Tombol Admin */}
+              <button 
+                onClick={() => onNavigate('admin')} 
+                className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${adminTheme.customHex ? '' : adminTheme.color}`}
+                style={adminTheme.customHex ? { backgroundColor: adminTheme.customHex } : {}}
+              >
+                <i className={`fas ${adminTheme.icon} text-2xl mb-1`}></i>
+                <h3 className="font-bold text-xs">{adminTheme.text}</h3>
+              </button>
+
+              {/* Tombol Setting */}
+              <button 
+                onClick={() => onNavigate('settings')} 
+                className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${settingTheme.customHex ? '' : settingTheme.color}`}
+                style={settingTheme.customHex ? { backgroundColor: settingTheme.customHex } : {}}
+              >
+                <i className={`fas ${settingTheme.icon} text-2xl mb-1`}></i>
+                <h3 className="font-bold text-xs">{settingTheme.text}</h3>
+              </button>
+            </>
+          )}
+
         </div>
         
         {/* FOOTER */}
@@ -154,7 +164,7 @@ export default function Lobby({ businessData, onNavigate }) {
 
         <div className="flex gap-2 justify-center mt-2">
           <button onClick={handleDarkMode} className="text-xs bg-gray-700 text-gray-200 px-3 py-1.5 rounded font-semibold active:scale-95 transition">Dark Mode</button>
-          <button onClick={handleBackup} className="text-xs bg-green-700 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition">Backup CSV</button>
+          {!isKasir && <button onClick={handleBackup} className="text-xs bg-green-700 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition">Backup CSV</button>}
           <button onClick={handleLogout} className="text-xs bg-red-700 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition">Logout</button>
         </div>
       </div>
