@@ -10,7 +10,21 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const [categories, setCategories] = useState([]);
   
   // === STATE UI & KERANJANG ===
-  const [cart, setCart] = useState([]);
+  // 1. Ambil data keranjang dari memori (jika kasir habis dari kalkulator/refresh)
+  const [cart, setCart] = useState(() => {
+    try {
+      const savedCart = localStorage.getItem('iszi_saved_cart');
+      return savedCart ? JSON.parse(savedCart) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // 2. Simpan otomatis ke memori setiap kali kasir nambah/kurang menu
+  useEffect(() => {
+    localStorage.setItem('iszi_saved_cart', JSON.stringify(cart));
+  }, [cart]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [buyerName, setBuyerName] = useState('');
