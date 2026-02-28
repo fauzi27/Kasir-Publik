@@ -20,24 +20,21 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const [modalMode, setModalMode] = useState('payment'); // 'payment' atau 'view'
   const [currentTransaction, setCurrentTransaction] = useState(null);
 
-  // Menentukan ID Pemilik Toko (Untuk Kasir & Admin)
+  // Menentukan ID Pemilik Toko
   const shopOwnerId = businessData?.ownerId || currentUser?.uid;
 
   // === MENGAMBIL DATA & CEK KALKULATOR MANUAL ===
   useEffect(() => {
     if (!shopOwnerId) return;
 
-    // Tarik Kategori
     const unsubCat = onSnapshot(collection(db, "users", shopOwnerId, "categories"), (snapshot) => {
       setCategories(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
     });
 
-    // Tarik Menu
     const unsubMenu = onSnapshot(collection(db, "users", shopOwnerId, "menus"), (snapshot) => {
       setMenus(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Cek apakah ada item dari Calculator.jsx
     const tempManual = localStorage.getItem('temp_manual_cart');
     if (tempManual) {
       try {
@@ -46,7 +43,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
           setCart(prev => [...prev, ...parsed]);
         }
       } catch(e) { console.error("Gagal membaca keranjang manual"); }
-      localStorage.removeItem('temp_manual_cart'); // Hapus setelah dibaca
+      localStorage.removeItem('temp_manual_cart'); 
     }
 
     return () => { unsubCat(); unsubMenu(); };
@@ -62,7 +59,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     setCart(prevCart => {
       const existing = prevCart.find(c => c.id === item.id);
       if (existing) {
-        // Cek limit stok
         if (item.stock !== undefined && existing.qty >= item.stock) {
           Swal.fire({toast: true, position: 'center', icon: 'error', title: 'Melebihi sisa stok!', timer: 1000, showConfirmButton: false});
           return prevCart;
@@ -79,7 +75,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         if (c.id === id) {
           const menuData = menus.find(m => m.id === id);
           const newQty = c.qty + change;
-          // Validasi stok saat tombol (+) ditekan
           if (change > 0 && menuData?.stock !== undefined && newQty > menuData.stock) {
             Swal.fire({toast: true, position: 'center', icon: 'error', title: 'Melebihi sisa stok!', timer: 1000, showConfirmButton: false});
             return c;
@@ -113,7 +108,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const handleCheckoutClick = () => {
     if (cart.length === 0) return Swal.fire('Kosong', 'Pilih menu terlebih dahulu', 'warning');
     
-    // Struktur data awal sebelum tahu metode pembayarannya
     const tempTx = {
       items: cart,
       total: cartTotal,
@@ -132,14 +126,12 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     setIsModalOpen(true);
   };
 
-  // 🔥 PERBAIKAN: Fungsi proses pembayaran yang sudah disuntik Kalkulator Nominal
   const processPayment = async (method) => {
     let paidAmount = 0;
     let changeAmount = 0;
     let remainingAmount = 0;
     let finalMethod = method;
 
-    // A. JIKA PILIH TUNAI, MINTA INPUT NOMINAL
     if (method === 'TUNAI') {
       const result = await Swal.fire({
         title: `Total: Rp ${cartTotal.toLocaleString('id-ID')}`,
@@ -151,16 +143,15 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         denyButtonText: 'Uang Pas',
       });
 
-      if (result.isDismissed) return; // Dibatalkan oleh kasir
+      if (result.isDismissed) return; 
 
       if (result.isDenied) {
-        paidAmount = cartTotal; // Uang pas
+        paidAmount = cartTotal; 
       } else if (result.isConfirmed) {
         if (!result.value) return Swal.fire('Error', 'Harus diisi!', 'error');
         paidAmount = parseInt(result.value);
       }
 
-      // Hitung Kembalian atau Hutang
       if (paidAmount > cartTotal) {
         changeAmount = paidAmount - cartTotal;
       } else if (paidAmount < cartTotal) {
@@ -168,17 +159,12 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         remainingAmount = cartTotal - paidAmount;
         await Swal.fire('Info', `Uang kurang! Otomatis dicatat sebagai Hutang dengan sisa Rp ${remainingAmount.toLocaleString('id-ID')}`, 'info');
       }
-
-    // B. JIKA QRIS (Otomatis Uang Pas)
     } else if (method === 'QRIS') {
       paidAmount = cartTotal;
-
-    // C. JIKA HUTANG PENUH
     } else if (method === 'HUTANG') {
       remainingAmount = cartTotal;
     }
 
-    // MULAI PROSES PENYIMPANAN KE FIREBASE
     Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
     try {
@@ -196,7 +182,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
 
       batch.set(txRef, finalTx);
       
-      // Potong Stok Menu
       cart.forEach(item => {
         if (!item.id.toString().startsWith('manual_')) {
           const menuData = menus.find(m => m.id === item.id);
@@ -213,7 +198,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       let successMsg = finalMethod === 'TUNAI' ? `Kembalian: Rp ${changeAmount.toLocaleString('id-ID')}` : 'Berhasil Disimpan';
       Swal.fire({ icon: 'success', title: 'Transaksi Sukses', text: successMsg, timer: 1800, showConfirmButton: false });
       
-      // Ubah modal ke mode 'view', dan kosongkan keranjang
       setCurrentTransaction(finalTx);
       setModalMode('view');
       setCart([]);
@@ -233,27 +217,27 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
 
   // === RENDER TAMPILAN ===
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 relative">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 relative transition-colors duration-300">
       
       {/* HEADER KASIR */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm z-10 flex-none w-full">
-        <div className="flex items-center justify-between px-4 py-2 border-b">
-          <button onClick={() => onNavigate('lobby')} className="text-gray-600 hover:text-gray-900 active:scale-90 transition p-2">
+      <div className="bg-white dark:bg-gray-800 shadow-sm z-10 flex-none w-full border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+          <button onClick={() => onNavigate('lobby')} className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white active:scale-90 transition p-2">
             <i className="fas fa-arrow-left text-lg"></i>
           </button>
           <div className="flex items-center gap-2">
-            <h2 className="font-bold text-gray-700 text-sm md:text-base">Mulai Jualan</h2>
+            <h2 className="font-bold text-gray-700 dark:text-gray-200 text-sm md:text-base">Mulai Jualan</h2>
           </div>
-          <button onClick={() => onNavigate('calculator')} className="text-teal-600 text-xs font-bold border border-teal-200 bg-teal-50 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1">
+          <button onClick={() => onNavigate('calculator')} className="text-teal-600 dark:text-teal-400 text-xs font-bold border border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1">
             <i className="fas fa-calculator"></i> <span className="hidden md:inline">Manual</span>
           </button>
         </div>
         
         {/* TAB KATEGORI */}
-        <div className="flex gap-2 p-2 overflow-x-auto whitespace-nowrap bg-gray-100 dark:bg-gray-800 hide-scrollbar border-b border-gray-200">
+        <div className="flex gap-2 p-2 overflow-x-auto whitespace-nowrap bg-gray-100 dark:bg-gray-900 hide-scrollbar border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
           <button 
             onClick={() => setActiveCategory('all')} 
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-600 border-gray-300'}`}
+            className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}
           >
             Semua
           </button>
@@ -261,27 +245,27 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
             <button 
               key={cat.uid}
               onClick={() => setActiveCategory(cat.name.toLowerCase())} 
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === cat.name.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 border-gray-300'}`}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === cat.name.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}
             >
               {cat.name}
             </button>
           ))}
         </div>
-        <div className="p-2 bg-white dark:bg-gray-800">
+        <div className="p-2 bg-white dark:bg-gray-800 transition-colors duration-300">
           <input 
             type="text" 
             placeholder="Cari nama menu..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full p-2.5 rounded-lg text-sm outline-none bg-gray-50 dark:bg-gray-900 border border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition"
+            className="w-full p-2.5 rounded-lg text-sm outline-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition"
           />
         </div>
       </div>
 
       {/* GRID MENU */}
-      <div className="flex-1 overflow-y-auto p-3 pb-10 bg-gray-50 dark:bg-gray-900">
+      <div className="flex-1 overflow-y-auto p-3 pb-10 bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
         {filteredMenus.length === 0 ? (
-          <div className="text-center mt-10 text-gray-400 flex flex-col items-center">
+          <div className="text-center mt-10 text-gray-400 dark:text-gray-500 flex flex-col items-center">
             <i className="fas fa-search text-3xl mb-2 opacity-30"></i>
             <p className="text-sm">Menu tidak ditemukan</p>
           </div>
@@ -291,22 +275,23 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
               <div 
                 key={item.id} 
                 onClick={() => addToCart(item)}
-                className={`p-2 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white dark:bg-gray-800'}`}
+                // Menimpa warna background bawaan menu saat dark mode aktif menjadi bg-gray-800
+                className={`p-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white'} dark:!bg-gray-800`}
               >
                 {item.image ? (
-                  <img src={item.image.replace('/upload/', '/upload/w_150,h_150,c_fill,q_auto,f_auto/')} alt={item.name} className="w-14 h-14 object-cover rounded-full shadow-sm mb-2 flex-none border-2 border-white" />
+                  <img src={item.image.replace('/upload/', '/upload/w_150,h_150,c_fill,q_auto,f_auto/')} alt={item.name} className="w-14 h-14 object-cover rounded-full shadow-sm mb-2 flex-none border-2 border-white dark:border-gray-700" />
                 ) : (
-                  <div className="w-14 h-14 flex items-center justify-center mb-2 flex-none bg-gray-50 dark:bg-gray-900 rounded-full border-2 border-white shadow-sm">
-                    <i className={`fas ${item.icon || 'fa-utensils'} text-2xl text-gray-400`}></i>
+                  <div className="w-14 h-14 flex items-center justify-center mb-2 flex-none bg-gray-50 dark:bg-gray-700 rounded-full border-2 border-white dark:border-gray-600 shadow-sm transition-colors">
+                    <i className={`fas ${item.icon || 'fa-utensils'} text-2xl text-gray-400 dark:text-gray-500`}></i>
                   </div>
                 )}
                 <div className="flex-1 flex flex-col justify-center w-full my-0.5 px-1">
-                  <h4 className="font-bold text-[11px] leading-tight text-gray-800 break-words line-clamp-2">{item.name}</h4>
+                  <h4 className="font-bold text-[11px] leading-tight text-gray-800 dark:text-gray-100 break-words line-clamp-2">{item.name}</h4>
                 </div>
-                <div className="w-full flex-none mt-auto pt-1.5 border-t border-gray-200/60 border-dashed">
-                  <p className="text-xs text-blue-700 font-extrabold">Rp {(item.price || 0).toLocaleString('id-ID')}</p>
+                <div className="w-full flex-none mt-auto pt-1.5 border-t border-gray-200/60 dark:border-gray-600/60 border-dashed">
+                  <p className="text-xs text-blue-700 dark:text-blue-400 font-extrabold">Rp {(item.price || 0).toLocaleString('id-ID')}</p>
                   {item.stock !== undefined && (
-                    <span className={`text-[9px] block mt-0.5 font-semibold ${item.stock <= 5 ? 'text-red-500' : 'text-gray-400'}`}>Sisa: {item.stock}</span>
+                    <span className={`text-[9px] block mt-0.5 font-semibold ${item.stock <= 5 ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>Sisa: {item.stock}</span>
                   )}
                 </div>
               </div>
@@ -316,9 +301,9 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       </div>
 
       {/* AREA KERANJANG (CART) BAWAH */}
-      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20 flex-none h-[40%] flex flex-col w-full">
-        <div className="p-3 border-b border-gray-100 bg-white dark:bg-gray-800 flex items-center gap-2 flex-none rounded-t-3xl">
-          <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
+      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20 flex-none h-[40%] flex flex-col w-full transition-colors duration-300">
+        <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center gap-2 flex-none rounded-t-3xl transition-colors duration-300">
+          <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 flex items-center justify-center flex-none">
             <i className="fas fa-user"></i>
           </div>
           <input 
@@ -326,32 +311,32 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
             placeholder="Nama Pelanggan (Opsional)..." 
             value={buyerName}
             onChange={e => setBuyerName(e.target.value)}
-            className="flex-1 bg-transparent outline-none text-sm font-bold text-gray-700 h-8" 
+            className="flex-1 bg-transparent outline-none text-sm font-bold text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 h-8" 
           />
-          <button onClick={clearCart} className="text-xs text-red-500 font-bold px-3 py-1.5 bg-red-50 rounded-lg hover:bg-red-100 border border-red-100 active:scale-95 transition flex items-center gap-1">
+          <button onClick={clearCart} className="text-xs text-red-500 dark:text-red-400 font-bold px-3 py-1.5 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-100 dark:border-red-800/30 active:scale-95 transition flex items-center gap-1">
             <i className="fas fa-trash-alt"></i> <span className="hidden sm:inline">Reset</span>
           </button>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-3 bg-gray-50/50">
+        <div className="flex-1 overflow-y-auto p-3 bg-gray-50/50 dark:bg-gray-900/50 transition-colors duration-300">
           {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 opacity-60">
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 opacity-60">
               <i className="fas fa-shopping-basket text-4xl mb-2"></i>
               <p className="text-xs font-medium">Keranjang masih kosong</p>
             </div>
           ) : (
             cart.map(item => (
-              <div key={item.id} className="flex justify-between items-center mb-2 bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm border border-gray-100">
+              <div key={item.id} className="flex justify-between items-center mb-2 bg-white dark:bg-gray-700 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 transition-colors">
                 <div className="flex-1 pr-2">
-                  <div className="font-bold text-xs text-gray-800 truncate">{item.name}</div>
-                  <div className="text-[10px] text-gray-500 font-medium">{item.qty} x {item.price.toLocaleString('id-ID')}</div>
+                  <div className="font-bold text-xs text-gray-800 dark:text-gray-100 truncate">{item.name}</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{item.qty} x {item.price.toLocaleString('id-ID')}</div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="font-bold text-sm text-gray-800 w-20 text-right">Rp {(item.price * item.qty).toLocaleString('id-ID')}</span>
-                  <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 p-0.5">
-                    <button onClick={() => updateQty(item.id, -1)} className="w-8 h-8 text-gray-600 hover:text-red-500 hover:bg-white dark:bg-gray-800 rounded-md text-sm font-bold transition shadow-sm">-</button>
-                    <span className="w-6 text-center text-xs font-bold text-gray-700">{item.qty}</span>
-                    <button onClick={() => updateQty(item.id, 1)} className="w-8 h-8 text-gray-600 hover:text-blue-500 hover:bg-white dark:bg-gray-800 rounded-md text-sm font-bold transition shadow-sm">+</button>
+                  <span className="font-bold text-sm text-gray-800 dark:text-gray-100 w-20 text-right">Rp {(item.price * item.qty).toLocaleString('id-ID')}</span>
+                  <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-0.5 transition-colors">
+                    <button onClick={() => updateQty(item.id, -1)} className="w-8 h-8 text-gray-600 dark:text-gray-300 hover:text-red-500 dark:hover:text-red-400 hover:bg-white dark:hover:bg-gray-600 rounded-md text-sm font-bold transition shadow-sm">-</button>
+                    <span className="w-6 text-center text-xs font-bold text-gray-700 dark:text-gray-200">{item.qty}</span>
+                    <button onClick={() => updateQty(item.id, 1)} className="w-8 h-8 text-gray-600 dark:text-gray-300 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-gray-600 rounded-md text-sm font-bold transition shadow-sm">+</button>
                   </div>
                 </div>
               </div>
@@ -359,7 +344,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
           )}
         </div>
 
-        <div className="p-4 bg-gray-900 text-white flex justify-between items-center flex-none pb-safe"> 
+        <div className="p-4 bg-gray-900 dark:bg-black text-white flex justify-between items-center flex-none pb-safe transition-colors duration-300"> 
           <div>
             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-0.5">Total Tagihan</p>
             <p className="text-2xl font-extrabold text-yellow-400 tracking-tight">Rp {cartTotal.toLocaleString('id-ID')}</p>
