@@ -158,14 +158,14 @@ export default function Settings({ businessData, currentUser, onNavigate }) {
           </div>
         )}
 
-        {/* KARTU STUDIO TEMA (MOCKUP SEMENTARA) */}
+        {/* 🔥 BARU: KARTU STUDIO TEMA */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 mb-4">
           <h3 className="font-bold text-gray-700 mb-2 text-sm flex items-center gap-2">
             <i className="fas fa-paint-roller text-purple-500"></i> Desain Aplikasi (Theme)
           </h3>
-          <p className="text-xs text-gray-500 mb-4">Fitur Studio Tampilan React sedang dalam tahap pengembangan akhir. Tema default ISZI Dark Mode digunakan saat ini.</p>
+          <p className="text-xs text-gray-500 mb-4">Sesuaikan warna tombol dan latar belakang khusus untuk kasir warung Anda.</p>
           <button 
-            onClick={() => Swal.fire('Info', 'Studio Tampilan akan segera rilis di React!', 'info')} 
+            onClick={() => onNavigate('studio')} 
             className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-2.5 rounded-lg font-bold text-sm shadow-md hover:opacity-90 active:scale-95 transition flex items-center justify-center gap-2"
           >
             <i className="fas fa-palette"></i> Buka Studio Tampilan
