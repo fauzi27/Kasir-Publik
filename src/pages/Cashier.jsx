@@ -233,7 +233,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
 
   // === RENDER TAMPILAN ===
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-800 relative">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 relative">
       
       {/* HEADER KASIR */}
       <div className="bg-white dark:bg-gray-800 shadow-sm z-10 flex-none w-full">
@@ -250,7 +250,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         </div>
         
         {/* TAB KATEGORI */}
-        <div className="flex gap-2 p-2 overflow-x-auto whitespace-nowrap bg-gray-100 hide-scrollbar border-b border-gray-200">
+        <div className="flex gap-2 p-2 overflow-x-auto whitespace-nowrap bg-gray-100 dark:bg-gray-800 hide-scrollbar border-b border-gray-200">
           <button 
             onClick={() => setActiveCategory('all')} 
             className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-600 border-gray-300'}`}
@@ -273,13 +273,13 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
             placeholder="Cari nama menu..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full p-2.5 rounded-lg text-sm outline-none bg-gray-50 border border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition"
+            className="w-full p-2.5 rounded-lg text-sm outline-none bg-gray-50 dark:bg-gray-900 border border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition"
           />
         </div>
       </div>
 
       {/* GRID MENU */}
-      <div className="flex-1 overflow-y-auto p-3 pb-10 bg-gray-50">
+      <div className="flex-1 overflow-y-auto p-3 pb-10 bg-gray-50 dark:bg-gray-900">
         {filteredMenus.length === 0 ? (
           <div className="text-center mt-10 text-gray-400 flex flex-col items-center">
             <i className="fas fa-search text-3xl mb-2 opacity-30"></i>
@@ -296,7 +296,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
                 {item.image ? (
                   <img src={item.image.replace('/upload/', '/upload/w_150,h_150,c_fill,q_auto,f_auto/')} alt={item.name} className="w-14 h-14 object-cover rounded-full shadow-sm mb-2 flex-none border-2 border-white" />
                 ) : (
-                  <div className="w-14 h-14 flex items-center justify-center mb-2 flex-none bg-gray-50 rounded-full border-2 border-white shadow-sm">
+                  <div className="w-14 h-14 flex items-center justify-center mb-2 flex-none bg-gray-50 dark:bg-gray-900 rounded-full border-2 border-white shadow-sm">
                     <i className={`fas ${item.icon || 'fa-utensils'} text-2xl text-gray-400`}></i>
                   </div>
                 )}
@@ -348,7 +348,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-bold text-sm text-gray-800 w-20 text-right">Rp {(item.price * item.qty).toLocaleString('id-ID')}</span>
-                  <div className="flex items-center bg-gray-100 rounded-lg border border-gray-200 p-0.5">
+                  <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 p-0.5">
                     <button onClick={() => updateQty(item.id, -1)} className="w-8 h-8 text-gray-600 hover:text-red-500 hover:bg-white dark:bg-gray-800 rounded-md text-sm font-bold transition shadow-sm">-</button>
                     <span className="w-6 text-center text-xs font-bold text-gray-700">{item.qty}</span>
                     <button onClick={() => updateQty(item.id, 1)} className="w-8 h-8 text-gray-600 hover:text-blue-500 hover:bg-white dark:bg-gray-800 rounded-md text-sm font-bold transition shadow-sm">+</button>
