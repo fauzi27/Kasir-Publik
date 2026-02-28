@@ -15,7 +15,7 @@ export default function Lobby({ businessData, onNavigate }) {
     return themeData[id] || { color: defaultColor, text: defaultText, icon: defaultIcon, customHex: '' };
   };
 
-  const themeBg = getTheme('lobby_bg', 'bg-gray-900', '', '');
+  // themeBg dihapus agar background transparan dan mengikuti App.jsx (mendukung Dark Mode)
   const themeTitle = getTheme('lobby_title', 'text-yellow-400', '', '');
   
   const cashierTheme = getTheme('btn_cashier', 'bg-blue-600', 'Mulai Jualan', 'fa-cash-register');
@@ -43,10 +43,11 @@ export default function Lobby({ businessData, onNavigate }) {
 
   // === FUNGSI DARK MODE ===
   const handleDarkMode = () => {
-  document.documentElement.classList.toggle('dark');
-  localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
-};
-  // === 🔥 FUNGSI BACKUP CSV (ASLI) ===
+    document.documentElement.classList.toggle('dark');
+    localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
+  };
+
+  // === FUNGSI BACKUP CSV ===
   const handleBackup = async () => {
     if (!shopOwnerId) return Swal.fire('Error', 'Data Toko tidak ditemukan', 'error');
 
@@ -66,7 +67,6 @@ export default function Lobby({ businessData, onNavigate }) {
       let csvTrx = "Tanggal,Pelanggan,Metode,Total,Sisa Hutang\n";
       trxSnap.forEach(doc => {
         const t = doc.data();
-        // Hilangkan koma pada tanggal agar tidak merusak format CSV
         const tgl = t.date ? t.date.replace(/,/g, '') : new Date(t.timestamp).toLocaleString('id-ID').replace(/,/g, '');
         csvTrx += `${tgl},${t.buyer || 'Umum'},${t.method || '-'},${t.total || 0},${t.remaining || 0}\n`;
       });
@@ -89,10 +89,8 @@ export default function Lobby({ businessData, onNavigate }) {
   };
 
   return (
-    <div 
-      className={`flex flex-col items-center justify-center min-h-screen p-6 text-center w-full ${themeBg.customHex ? '' : themeBg.color}`}
-      style={themeBg.customHex ? { backgroundColor: themeBg.customHex } : {}}
-    >
+    // 🔥 PERBAIKAN: Background transparan di sini agar warna App.jsx bisa terlihat
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center w-full">
       <div className="w-full max-w-3xl mx-auto flex flex-col items-center">
         
         {/* HEADER LOBI */}
@@ -103,7 +101,7 @@ export default function Lobby({ businessData, onNavigate }) {
           >
             {businessData?.shopName || businessData?.name || 'ISZI'}
           </h1>
-          <p className="text-gray-400 text-sm">
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
             {businessData?.shopAddress || businessData?.address || 'Nusadua Bali'}
           </p>
           {isKasir && (
@@ -190,12 +188,12 @@ export default function Lobby({ businessData, onNavigate }) {
 
         </div>
         
-        <p className="mt-8 text-xs text-gray-500 flex-none">ISZI v1.0 React (For more fitur contact us 081559557553)</p>
+        <p className="mt-8 text-xs text-gray-500 dark:text-gray-400 flex-none">ISZI v1.0 React (For more fitur contact us 081559557553)</p>
 
         <div className="flex gap-2 justify-center mt-2">
-          <button onClick={handleDarkMode} className="text-xs bg-gray-700 text-gray-200 px-3 py-1.5 rounded font-semibold active:scale-95 transition">Dark Mode</button>
-          {!isKasir && <button onClick={handleBackup} className="text-xs bg-green-700 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition">Backup CSV</button>}
-          <button onClick={handleLogout} className="text-xs bg-red-700 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition">Logout</button>
+          <button onClick={handleDarkMode} className="text-xs bg-gray-700 hover:bg-gray-800 text-gray-200 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Dark Mode</button>
+          {!isKasir && <button onClick={handleBackup} className="text-xs bg-green-700 hover:bg-green-800 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Backup CSV</button>}
+          <button onClick={handleLogout} className="text-xs bg-red-700 hover:bg-red-800 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Logout</button>
         </div>
       </div>
     </div>
