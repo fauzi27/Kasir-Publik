@@ -33,19 +33,20 @@ export default function Table({ businessData, currentUser, onNavigate }) {
     Swal.fire({ title: 'Menyiapkan Excel...', didOpen: () => Swal.showLoading() });
 
     try {
-      // 1. Siapkan data mentah menjadi format baris Excel
+      // 1. Siapkan data mentah menjadi format baris Excel (SINKRON DENGAN V1)
       const excelData = transactions.map((t, index) => {
-        // Gabungkan nama item yang dibeli menjadi satu teks
         const itemsText = t.items ? t.items.map(i => `${i.name} (${i.qty}x)`).join(', ') : 'Item Manual';
+        const tgl = t.date || new Date(t.timestamp).toLocaleString('id-ID');
         
         return {
           "No": index + 1,
-          "Tanggal": new Date(t.timestamp).toLocaleString('id-ID'),
-          "Pelanggan": t.buyerName || 'Pelanggan Umum',
+          "Tanggal": tgl,
+          "Pelanggan": t.buyer || 'Pelanggan Umum', // 🔥 PERBAIKAN: Gunakan t.buyer
           "Item Dibeli": itemsText,
           "Total (Rp)": t.total || 0,
-          "Status Pembayaran": t.paymentMethod || 'TUNAI',
-          "Kasir": t.cashierName || 'Admin'
+          "Sisa Hutang (Rp)": t.remaining || 0, // 🔥 TAMBAHAN: Kolom Hutang
+          "Status Pembayaran": t.method || 'TUNAI', // 🔥 PERBAIKAN: Gunakan t.method
+          "Kasir": t.operatorName || 'Admin' // 🔥 PERBAIKAN: Gunakan t.operatorName
         };
       });
 
@@ -55,7 +56,7 @@ export default function Table({ businessData, currentUser, onNavigate }) {
       XLSX.utils.book_append_sheet(workbook, worksheet, "Riwayat Transaksi");
 
       // 3. Download File
-      XLSX.writeFile(workbook, `Laporan_Transaksi_${businessData?.shopName || 'ISZI'}_${new Date().toLocaleDateString('id-ID').replace(/\//g, '-')}.xlsx`);
+      XLSX.writeFile(workbook, `Buku_Besar_${businessData?.shopName || 'ISZI'}_${new Date().toLocaleDateString('id-ID').replace(/\//g, '-')}.xlsx`);
       
       Swal.close();
     } catch (error) {
@@ -114,26 +115,48 @@ export default function Table({ businessData, currentUser, onNavigate }) {
                     </td>
                   </tr>
                 ) : (
-                  transactions.map((t, index) => (
-                    <tr key={t.id} className="hover:bg-emerald-50/50 transition duration-150">
-                      <td className="p-3 text-sm text-center text-gray-500">{index + 1}</td>
-                      <td className="p-3 text-sm text-gray-600">{new Date(t.timestamp).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</td>
-                      <td className="p-3 text-sm font-semibold text-gray-800">{t.buyerName || 'Pelanggan Umum'}</td>
-                      <td className="p-3 text-sm text-gray-600 truncate max-w-[250px]">
-                        {t.items ? t.items.map(i => `${i.name} (${i.qty})`).join(', ') : <span className="italic text-gray-400">Input Manual</span>}
-                      </td>
-                      <td className="p-3 text-sm font-bold text-gray-800 text-right">Rp {(t.total || 0).toLocaleString('id-ID')}</td>
-                      <td className="p-3 text-center">
-                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                          t.paymentMethod === 'TUNAI' ? 'bg-green-100 text-green-700' : 
-                          t.paymentMethod === 'QRIS' ? 'bg-purple-100 text-purple-700' : 
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          {t.paymentMethod || 'TUNAI'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                  transactions.map((t, index) => {
+                    const hasHutang = (t.remaining || 0) > 0;
+                    const tgl = t.date ? t.date.split(', ') : new Date(t.timestamp).toLocaleString('id-ID').split(', ');
+
+                    return (
+                      <tr key={t.id} className="hover:bg-emerald-50/50 transition duration-150">
+                        <td className="p-3 text-sm text-center text-gray-500">{index + 1}</td>
+                        <td className="p-3 text-xs text-gray-600">
+                          <div className="font-bold text-gray-800">{tgl[0]}</div>
+                          <div className="text-[10px]">{tgl[1] || ''}</div>
+                        </td>
+                        {/* 🔥 PERBAIKAN: Gunakan t.buyer */}
+                        <td className="p-3 text-xs font-bold text-gray-800 uppercase">{t.buyer || 'Pelanggan Umum'}</td>
+                        <td className="p-3">
+                          {t.items && t.items.length > 0 ? (
+                            t.items.map((i, idx) => (
+                              <div key={idx} className="text-[11px] mb-0.5">
+                                • {i.name} <span className="font-bold text-blue-600">(x{i.qty})</span>
+                              </div>
+                            ))
+                          ) : (
+                            <span className="italic text-gray-400 text-xs">Item Manual</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-xs font-extrabold text-gray-800 text-right whitespace-nowrap">
+                          Rp {(t.total || 0).toLocaleString('id-ID')}
+                        </td>
+                        <td className="p-3 text-center whitespace-nowrap">
+                          {/* 🔥 PERBAIKAN: Logika lunas / sisa hutang sesuai V1 */}
+                          {hasHutang ? (
+                             <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold block w-full">
+                               HUTANG Rp {t.remaining.toLocaleString('id-ID')}
+                             </span>
+                          ) : (
+                             <span className={`px-2 py-1 rounded text-[10px] font-bold block w-full ${t.method === 'QRIS' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                               {t.method === 'QRIS' ? 'LUNAS (QRIS)' : 'LUNAS (TUNAI)'}
+                             </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
