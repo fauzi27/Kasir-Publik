@@ -4,37 +4,35 @@ import { collection, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } fro
 import Swal from 'sweetalert2';
 import ReceiptModal from '../components/ReceiptModal';
 
+// === IMPORT LIBRARY EXPORT ===
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+
 export default function Report({ businessData, currentUser, onNavigate }) {
-  // === STATE DATA ===
   const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // === STATE FILTER ===
   const [dateFilter, setDateFilter] = useState('today'); 
   const [customDate, setCustomDate] = useState('');
-  const [paymentFilter, setPaymentFilter] = useState('ALL'); // 'ALL' atau 'HUTANG'
+  const [paymentFilter, setPaymentFilter] = useState('ALL'); 
 
-  // === STATE MODAL ===
   const [selectedTx, setSelectedTx] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   const shopOwnerId = businessData?.ownerId || currentUser?.uid;
 
-  // === MENGAMBIL DATA TRANSAKSI (REAL-TIME) ===
   useEffect(() => {
     if (!shopOwnerId) return;
-
     const q = query(collection(db, "users", shopOwnerId, "transactions"), orderBy("timestamp", "desc"));
     const unsub = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTransactions(data);
       setIsLoading(false);
     });
-
     return () => unsub();
   }, [shopOwnerId]);
 
-  // === LOGIKA FILTER TANGGAL & HUTANG ===
   const getFilteredTransactions = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -42,7 +40,6 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     const sevenDaysAgo = today - (7 * 24 * 60 * 60 * 1000);
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-    // 1. Filter Tanggal
     let filtered = transactions.filter(t => {
       const tTime = t.timestamp || 0;
       if (dateFilter === 'today') return tTime >= today;
@@ -57,17 +54,15 @@ export default function Report({ businessData, currentUser, onNavigate }) {
       return true;
     });
 
-    // 2. Filter Status Hutang
     if (paymentFilter === 'HUTANG') {
       filtered = filtered.filter(t => (t.remaining || 0) > 0);
     }
-
     return filtered;
   };
 
   const filteredData = getFilteredTransactions();
 
-  // === KALKULASI OTOMATIS DASBOR ===
+  // === KALKULASI DASBOR ===
   const totalOmzet = filteredData.reduce((sum, t) => sum + (t.total || 0), 0);
   const totalTunai = filteredData.reduce((sum, t) => {
     if (t.method === 'TUNAI') {
@@ -80,7 +75,6 @@ export default function Report({ businessData, currentUser, onNavigate }) {
   const totalHutang = filteredData.reduce((sum, t) => sum + (t.remaining || (t.method === 'HUTANG' ? (t.total || 0) : 0)), 0);
   const totalTransaksi = filteredData.length;
 
-  // === FUNGSI HAPUS TRANSAKSI ===
   const handleDeleteTransaction = async (txId) => {
     Swal.fire({
       title: 'Hapus Transaksi?',
@@ -105,14 +99,13 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     });
   };
 
-  // 🔥 BARU: FUNGSI PELUNASAN HUTANG
   const handleMarkLunas = async (tx) => {
     Swal.fire({
       title: 'Pelanggan Bayar Lunas?',
       text: `Sisa hutang Rp ${(tx.remaining || 0).toLocaleString('id-ID')} akan dilunasi dan masuk ke Kas Tunai.`,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonColor: '#10b981', // Warna hijau
+      confirmButtonColor: '#10b981', 
       cancelButtonColor: '#d33',
       confirmButtonText: 'Ya, Lunas!',
       cancelButtonText: 'Batal'
@@ -121,7 +114,6 @@ export default function Report({ businessData, currentUser, onNavigate }) {
         Swal.fire({ title: 'Memproses...', didOpen: () => Swal.showLoading() });
         try {
           const txRef = doc(db, "users", shopOwnerId, "transactions", tx.id);
-          // Update ke Firebase: Jadikan lunas dan ubah ke TUNAI
           await updateDoc(txRef, {
             remaining: 0,
             paid: tx.total,
@@ -136,18 +128,139 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     });
   };
 
-  // === MOCKUP EXPORT (Bisa diaktifkan nanti) ===
-  const handleExport = (type) => {
-    Swal.fire('Info', `Fitur Export ${type} sedang dipersiapkan untuk React!`, 'info');
+  // 🔥 FUNGSI EXPORT PDF (DIADOPSI DARI V1)
+  const exportToPDF = () => {
+    if (filteredData.length === 0) return Swal.fire('Kosong', 'Tidak ada data untuk diekspor', 'warning');
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const shopName = businessData?.shopName || businessData?.name || "ISZI POS";
+    const shopAddress = businessData?.shopAddress || businessData?.address || "Alamat Toko";
+
+    doc.setFontSize(14);
+    doc.text(shopName, 105, 10, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(shopAddress, 105, 17, { align: 'center' });
+    
+    let filterLabel = "Semua Waktu";
+    if (dateFilter === 'today') filterLabel = "Hari Ini";
+    if (dateFilter === 'yesterday') filterLabel = "Kemarin";
+    if (dateFilter === '7days') filterLabel = "7 Hari Terakhir";
+    if (dateFilter === 'month') filterLabel = "Bulan Ini";
+    if (dateFilter === 'custom') filterLabel = customDate;
+
+    doc.text("Laporan Penjualan - " + filterLabel, 105, 24, { align: 'center' });
+    doc.text("Dicetak pada: " + new Date().toLocaleString('id-ID'), 105, 31, { align: 'center' });
+
+    let yPos = 40;
+    let grandTotal = 0;
+    let isHutangFilter = paymentFilter === 'HUTANG';
+
+    filteredData.forEach((trx, index) => {
+      const calcTotal = isHutangFilter ? (trx.remaining || 0) : trx.total;
+      grandTotal += calcTotal;
+      const tgl = trx.date || new Date(trx.timestamp).toLocaleString('id-ID');
+
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Transaksi #${index + 1}: ${tgl} - ${trx.buyer || 'Umum'}`, 10, yPos);
+      yPos += 7;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Metode: ${trx.method || '-'} | Total: Rp ${calcTotal.toLocaleString('id-ID')}`, 10, yPos);
+      
+      if ((trx.remaining || 0) > 0) {
+        doc.text(`Dibayar: Rp ${(trx.paid || 0).toLocaleString('id-ID')} | Sisa Hutang: Rp ${(trx.remaining || 0).toLocaleString('id-ID')}`, 10, yPos + 5);
+        if (isHutangFilter) {
+          doc.text(`(Total Belanja Asli: Rp ${(trx.total || 0).toLocaleString('id-ID')})`, 10, yPos + 10);
+          yPos += 5;
+        }
+      } else if (trx.method === 'TUNAI') {
+        doc.text(`Dibayar: Rp ${(trx.paid || 0).toLocaleString('id-ID')} | Kembalian: Rp ${(trx.change || 0).toLocaleString('id-ID')}`, 10, yPos + 5);
+      }
+      yPos += 15;
+
+      if (trx.items && trx.items.length > 0) {
+        const itemData = trx.items.map(item => [
+          item.name,
+          item.qty,
+          `Rp ${(item.price || 0).toLocaleString('id-ID')}`,
+          `Rp ${((item.price || 0) * (item.qty || 0)).toLocaleString('id-ID')}`
+        ]);
+        doc.autoTable({
+          head: [['Nama Item', 'Qty', 'Harga', 'Subtotal']],
+          body: itemData,
+          startY: yPos,
+          margin: { left: 10, right: 10 },
+          theme: 'grid',
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [100, 100, 100] },
+          columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 20 }, 2: { cellWidth: 40 }, 3: { cellWidth: 40 } }
+        });
+        yPos = doc.lastAutoTable.finalY + 10;
+      } else {
+        doc.text("Tidak ada item detail.", 10, yPos);
+        yPos += 10;
+      }
+
+      yPos += 5;
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+    });
+
+    doc.addPage();
+    yPos = 20;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Ringkasan", 10, yPos);
+    yPos += 10;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Total Transaksi: ${filteredData.length}`, 10, yPos);
+    yPos += 7;
+    doc.text(`${isHutangFilter ? "Total Sisa Hutang" : "Omzet Keseluruhan"}: Rp ${grandTotal.toLocaleString('id-ID')}`, 10, yPos);
+
+    doc.save(`Laporan_Penjualan_${filterLabel.replace(/\s+/g, '_')}.pdf`);
   };
 
-  // === BUKA DETAIL TRANSAKSI ===
+  // 🔥 FUNGSI EXPORT EXCEL (DIADOPSI DARI V1)
+  const exportToExcel = () => {
+    if (filteredData.length === 0) return Swal.fire('Kosong', 'Tidak ada data', 'warning');
+    
+    const wb = XLSX.utils.book_new();
+    const trxData = [['Tanggal', 'Pelanggan', 'Metode', 'Total/Sisa', 'Item Count']];
+    
+    filteredData.forEach(trx => {
+      const calcValue = (paymentFilter === 'HUTANG') ? (trx.remaining || 0) : (trx.total || 0);
+      const tgl = trx.date || new Date(trx.timestamp).toLocaleString('id-ID');
+      trxData.push([tgl, trx.buyer || 'Umum', trx.method || '-', calcValue, trx.items ? trx.items.length : 0]);
+    });
+    
+    const wsTrx = XLSX.utils.aoa_to_sheet(trxData);
+    XLSX.utils.book_append_sheet(wb, wsTrx, 'Transaksi');
+    
+    const sumOmzet = filteredData.reduce((sum, trx) => sum + ((paymentFilter === 'HUTANG') ? (trx.remaining || 0) : (trx.total || 0)), 0);
+    const avgTrx = filteredData.length > 0 ? sumOmzet / filteredData.length : 0;
+    
+    const sumData = [
+      ['Label', 'Nilai'],
+      ['Total Omzet/Sisa', sumOmzet],
+      ['Rata-rata Transaksi', avgTrx.toFixed(0)],
+      ['Jumlah Transaksi', filteredData.length]
+    ];
+    
+    const wsSum = XLSX.utils.aoa_to_sheet(sumData);
+    XLSX.utils.book_append_sheet(wb, wsSum, 'Ringkasan');
+    
+    XLSX.writeFile(wb, `Laporan_Penjualan_${new Date().getTime()}.xlsx`);
+  };
+
   const openTransactionDetail = (tx) => {
     setSelectedTx(tx);
     setIsModalOpen(true);
   };
 
-  // === RENDER TAMPILAN ===
   return (
     <div className="flex flex-col h-screen bg-gray-50 text-gray-800">
       
@@ -161,8 +274,9 @@ export default function Report({ businessData, currentUser, onNavigate }) {
             <h2 className="font-bold text-lg">Dashboard Analitik</h2>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => handleExport('PDF')} className="w-8 h-8 bg-purple-700 rounded-full flex items-center justify-center hover:bg-purple-600 transition"><i className="fas fa-file-pdf text-xs"></i></button>
-            <button onClick={() => handleExport('Excel')} className="w-8 h-8 bg-purple-700 rounded-full flex items-center justify-center hover:bg-purple-600 transition"><i className="fas fa-file-excel text-xs"></i></button>
+            {/* 🔥 UBAH TOMBOL EXPORT DI SINI */}
+            <button onClick={exportToPDF} className="w-8 h-8 bg-purple-700 rounded-full flex items-center justify-center hover:bg-purple-600 transition shadow-sm"><i className="fas fa-file-pdf text-xs"></i></button>
+            <button onClick={exportToExcel} className="w-8 h-8 bg-purple-700 rounded-full flex items-center justify-center hover:bg-purple-600 transition shadow-sm"><i className="fas fa-file-excel text-xs"></i></button>
           </div>
         </div>
         
@@ -272,7 +386,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
 
       </div>
 
-      {/* MODAL STRUK (DIBUKA DALAM MODE VIEW) */}
+      {/* MODAL STRUK */}
       <ReceiptModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -280,7 +394,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
         businessData={businessData}
         mode="view"
         onDelete={handleDeleteTransaction}
-        onMarkLunas={handleMarkLunas} // 🔥 Props baru untuk Modal
+        onMarkLunas={handleMarkLunas} 
       />
       
     </div>
