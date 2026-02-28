@@ -81,7 +81,7 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
         imageUrl = await uploadToCloudinary(newImageFile);
       }
 
-      await addDoc(collection(db, "users", shopOwnerId, "menus"), {
+      addDoc(collection(db, "users", shopOwnerId, "menus"), {
         name: newName,
         price: parseInt(newPrice),
         category: cat,
@@ -103,13 +103,13 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
   // === FUNGSI HAPUS & FAVORIT ===
   const handleDeleteMenu = async (id) => {
     if (window.confirm('Hapus menu ini permanen?')) {
-      await deleteDoc(doc(db, "users", shopOwnerId, "menus", id));
+       deleteDoc(doc(db, "users", shopOwnerId, "menus", id));
       Swal.fire({icon: 'success', title: 'Terhapus', timer: 1000, showConfirmButton: false});
     }
   };
 
   const toggleFavorite = async (item) => {
-    await setDoc(doc(db, "users", shopOwnerId, "menus", item.id), { favorite: !item.favorite }, { merge: true });
+    setDoc(doc(db, "users", shopOwnerId, "menus", item.id), { favorite: !item.favorite }, { merge: true });
   };
 
   // 🔥 BARU: FUNGSI EDIT MENU (SWEETALERT POPUP)
@@ -192,7 +192,7 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
                 updateData.image = newImageUrl;
             }
 
-            await setDoc(doc(db, "users", shopOwnerId, "menus", item.id), updateData, { merge: true });
+            setDoc(doc(db, "users", shopOwnerId, "menus", item.id), updateData, { merge: true });
             Swal.fire({icon: 'success', title: 'Berhasil Diupdate', timer: 1200, showConfirmButton: false});
         } catch (e) {
             Swal.fire('Error', 'Gagal update: ' + e.message, 'error');
@@ -205,7 +205,7 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
   const addCategoryPrompt = async () => {
     const { value: catName } = await Swal.fire({ title: 'Tambah Kategori', input: 'text', showCancelButton: true });
     if (catName) {
-      await addDoc(collection(db, "users", shopOwnerId, "categories"), { name: catName, id: catName.toLowerCase() });
+      addDoc(collection(db, "users", shopOwnerId, "categories"), { name: catName, id: catName.toLowerCase() });
       Swal.fire({icon: 'success', title: 'Kategori ditambahkan', timer: 1000, showConfirmButton: false});
     }
   };
@@ -222,7 +222,7 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
                 title: 'Yakin hapus?', text: `Kategori "${name}"?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33'
             });
             if (res.isConfirmed) {
-                await deleteDoc(doc(db, "users", shopOwnerId, "categories", uid));
+                 deleteDoc(doc(db, "users", shopOwnerId, "categories", uid));
                 if (activeCategory === name.toLowerCase()) setActiveCategory('all');
                 Swal.fire({icon: 'success', title: 'Terhapus', timer: 1000, showConfirmButton: false});
             }
