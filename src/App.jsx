@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore'; // Tambah collection & onSnapshot untuk realtime nanti
+import { doc, getDoc } from 'firebase/firestore'; 
+import Swal from 'sweetalert2'; // 🔥 Penting untuk menutup popup saat tombol back ditekan
 
 // === IMPORT SEMUA HALAMAN ===
 import Auth from './pages/Auth';
@@ -13,7 +14,7 @@ import Report from './pages/Report';
 import Settings from './pages/Settings';
 import Table from './pages/Table';
 import Calculator from './pages/Calculator';
-import Studio from './pages/Studio'; // 🔥 BARU: Import halaman Studio
+import Studio from './pages/Studio'; 
 
 function App() {
   // === STATE GLOBAL ===
@@ -21,6 +22,36 @@ function App() {
   const [businessData, setBusinessData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState('lobby'); 
+
+  // === 🔥 SISTEM NAVIGASI & TOMBOL BACK HP ===
+  const handleNavigate = (view) => {
+    if (currentView !== view) {
+      // Catat perpindahan halaman ke memori browser/HP
+      window.history.pushState({ view: view }, '', '#' + view);
+      setCurrentView(view);
+    }
+  };
+
+  useEffect(() => {
+    // Tetapkan sejarah awal saat aplikasi baru dibuka
+    window.history.replaceState({ view: 'lobby' }, '', '#lobby');
+
+    const handlePopState = (event) => {
+      // 1. Tutup paksa pop-up SweetAlert jika kasir menekan tombol back HP
+      if (Swal.isVisible()) Swal.close();
+      
+      // 2. Arahkan mundur sesuai riwayat
+      if (event.state && event.state.view) {
+        setCurrentView(event.state.view);
+      } else {
+        // Jika riwayat habis, jangan biarkan aplikasi tertutup, kembalikan ke Lobi
+        setCurrentView('lobby');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // === AUTH LISTENER (VERSI ANTI-MACET SAAT OFFLINE) ===
   useEffect(() => {
@@ -99,7 +130,7 @@ function App() {
           {currentView === 'lobby' && (
             <Lobby 
               businessData={businessData} 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
           
@@ -107,7 +138,7 @@ function App() {
             <Cashier 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
 
@@ -115,7 +146,7 @@ function App() {
             <Admin 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
 
@@ -123,7 +154,7 @@ function App() {
             <Stock 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
 
@@ -131,7 +162,7 @@ function App() {
             <Report 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
 
@@ -139,7 +170,7 @@ function App() {
             <Settings 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
 
@@ -147,22 +178,21 @@ function App() {
             <Table 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
 
           {currentView === 'calculator' && (
             <Calculator 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
 
-          {/* 🔥 BARU: Halaman Studio */}
           {currentView === 'studio' && (
             <Studio 
               businessData={businessData} 
               currentUser={currentUser} 
-              onNavigate={setCurrentView} 
+              onNavigate={handleNavigate} 
             />
           )}
         </>
