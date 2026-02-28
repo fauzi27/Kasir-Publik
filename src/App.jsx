@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot } from 'firebase/firestore'; // Tambah collection & onSnapshot untuk realtime nanti
 
 // === IMPORT SEMUA HALAMAN ===
 import Auth from './pages/Auth';
@@ -13,6 +13,7 @@ import Report from './pages/Report';
 import Settings from './pages/Settings';
 import Table from './pages/Table';
 import Calculator from './pages/Calculator';
+import Studio from './pages/Studio'; // 🔥 BARU: Import halaman Studio
 
 function App() {
   // === STATE GLOBAL ===
@@ -43,6 +44,8 @@ function App() {
                   const ownerData = ownerSnap.data();
                   dataUsaha.shopName = ownerData.name;
                   dataUsaha.shopAddress = ownerData.address;
+                  // Gabung themeData dari Owner jika kasir
+                  if(ownerData.themeData) dataUsaha.themeData = ownerData.themeData; 
                 }
               }
               // Simpan salinan ke memori HP untuk jaga-jaga kalau offline nanti
@@ -153,9 +156,18 @@ function App() {
               onNavigate={setCurrentView} 
             />
           )}
+
+          {/* 🔥 BARU: Halaman Studio */}
+          {currentView === 'studio' && (
+            <Studio 
+              businessData={businessData} 
+              currentUser={currentUser} 
+              onNavigate={setCurrentView} 
+            />
+          )}
         </>
       ) : (
-        // JIKA BELUM LOGIN, TAMPILKAN HALAMAN AUTH BoSS
+        // JIKA BELUM LOGIN, TAMPILKAN HALAMAN AUTH
         <Auth />
       )}
     </div>
