@@ -92,7 +92,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
       if (result.isConfirmed) {
         Swal.fire({ title: 'Menghapus...', didOpen: () => Swal.showLoading() });
         try {
-          await deleteDoc(doc(db, "users", shopOwnerId, "transactions", txId));
+           deleteDoc(doc(db, "users", shopOwnerId, "transactions", txId));
           setIsModalOpen(false);
           Swal.fire({ icon: 'success', title: 'Terhapus!', timer: 1200, showConfirmButton: false });
         } catch (error) {
@@ -117,7 +117,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
         Swal.fire({ title: 'Memproses...', didOpen: () => Swal.showLoading() });
         try {
           const txRef = doc(db, "users", shopOwnerId, "transactions", tx.id);
-          await updateDoc(txRef, {
+           updateDoc(txRef, {
             remaining: 0,
             paid: tx.total,
             method: 'TUNAI' 
