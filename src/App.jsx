@@ -26,9 +26,18 @@ function App() {
   const isKasir = businessData?.role === 'kasir';
   const restrictedViews = ['admin', 'stock', 'settings', 'table', 'studio'];
 
+  // === 🔥 MESIN DARK MODE GLOBAL ===
+  useEffect(() => {
+    // Saat aplikasi dibuka, cek apakah sebelumnya kasir mengaktifkan Dark Mode
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.documentElement.classList.add('dark'); // Pasang di tag <html>
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
   // === 🔥 SISTEM NAVIGASI & KEAMANAN ROUTE ===
   const handleNavigate = (view) => {
-    // 1. Blokir navigasi jika Kasir mencoba masuk area terlarang
     if (isKasir && restrictedViews.includes(view)) {
       Swal.fire('Akses Ditolak', 'Halaman ini khusus Admin/Pemilik.', 'error');
       return;
@@ -45,7 +54,6 @@ function App() {
 
     const handlePopState = (event) => {
       if (Swal.isVisible()) Swal.close();
-      
       let nextView = event.state?.view || 'lobby';
       setCurrentView(nextView);
     };
@@ -81,9 +89,7 @@ function App() {
             }
           } else {
             const cached = localStorage.getItem('cached_user_profile');
-            if (cached) {
-              dataUsaha = JSON.parse(cached);
-            }
+            if (cached) dataUsaha = JSON.parse(cached);
           }
         } catch (e) {
           const cached = localStorage.getItem('cached_user_profile');
@@ -96,7 +102,6 @@ function App() {
         setBusinessData(null);
         setCurrentView('lobby'); 
       }
-      
       setIsLoading(false);
     });
 
@@ -105,68 +110,41 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white transition-colors duration-300">
         <i className="fas fa-circle-notch fa-spin text-4xl text-blue-500 mb-3"></i>
-        <span className="text-sm font-bold text-gray-300">Menyiapkan ISZI...</span>
+        <span className="text-sm font-bold">Menyiapkan ISZI...</span>
       </div>
     );
   }
 
-  // === 🔥 RENDER BLOKIR JIKA KASIR MEMAKSA LEWAT URL ===
   if (currentUser && isKasir && restrictedViews.includes(currentView)) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-6 text-center">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white p-6 text-center transition-colors duration-300">
         <i className="fas fa-shield-alt text-6xl text-red-500 mb-4"></i>
         <h2 className="text-2xl font-bold mb-2">Area Terlarang</h2>
-        <p className="text-gray-400 text-sm mb-6">Akun Kasir tidak memiliki izin untuk mengakses halaman ini.</p>
-        <button onClick={() => handleNavigate('lobby')} className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl font-bold transition active:scale-95 shadow-lg">
+        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Akun Kasir tidak memiliki izin untuk mengakses halaman ini.</p>
+        <button onClick={() => handleNavigate('lobby')} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition active:scale-95 shadow-lg">
           Kembali ke Lobi
         </button>
       </div>
     );
   }
 
-  // === RENDER UTAMA ===
+  // === 🔥 RENDER UTAMA DENGAN DUKUNGAN DARK MODE TAIWIND ===
   return (
-    <div className="App min-h-screen bg-gray-900 text-white font-sans overflow-x-hidden">
+    <div className="App min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 font-sans overflow-x-hidden transition-colors duration-300">
       {currentUser ? (
         <>
-          {currentView === 'lobby' && (
-            <Lobby businessData={businessData} onNavigate={handleNavigate} />
-          )}
+          {currentView === 'lobby' && <Lobby businessData={businessData} onNavigate={handleNavigate} />}
+          {currentView === 'cashier' && <Cashier businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
+          {currentView === 'report' && <Report businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
+          {currentView === 'calculator' && <Calculator onNavigate={handleNavigate} />}
           
-          {currentView === 'cashier' && (
-            <Cashier businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />
-          )}
-
-          {currentView === 'report' && (
-            <Report businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />
-          )}
-
-          {currentView === 'calculator' && (
-            <Calculator onNavigate={handleNavigate} />
-          )}
-
-          {/* Area ini tidak akan pernah dirender oleh Kasir karena sudah diblokir di atas */}
-          {currentView === 'admin' && (
-            <Admin businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />
-          )}
-
-          {currentView === 'stock' && (
-            <Stock businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />
-          )}
-
-          {currentView === 'settings' && (
-            <Settings businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />
-          )}
-
-          {currentView === 'table' && (
-            <Table businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />
-          )}
-
-          {currentView === 'studio' && (
-            <Studio businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />
-          )}
+          {currentView === 'admin' && <Admin businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
+          {currentView === 'stock' && <Stock businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
+          {currentView === 'settings' && <Settings businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
+          {currentView === 'table' && <Table businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
+          {currentView === 'studio' && <Studio businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
         </>
       ) : (
         <Auth />
