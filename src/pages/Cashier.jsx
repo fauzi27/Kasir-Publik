@@ -128,7 +128,8 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       buyer: buyerName || 'Pelanggan Umum',
       timestamp: Date.now(),
       date: new Date().toLocaleString('id-ID'), 
-      operatorName: currentUser?.email?.split('@')[0] || 'Kasir', 
+      // 🔥 REVISI: Menggunakan operatorName dari businessData hasil racikan App.jsx
+      operatorName: businessData?.operatorName || 'Kasir', 
       paid: 0,
       change: 0,
       remaining: 0,
@@ -207,7 +208,8 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         }
       });
       
-      batch.commit(); 
+      // 🔥 REVISI: Tambahkan catch untuk mode offline agar aman
+      batch.commit().catch(err => console.log("Tersimpan offline, menunggu koneksi...", err)); 
       
       let successMsg = finalMethod === 'TUNAI' ? `Kembalian: Rp ${changeAmount.toLocaleString('id-ID')}` : 'Berhasil Disimpan';
       Swal.fire({ icon: 'success', title: 'Transaksi Sukses', text: successMsg, timer: 1800, showConfirmButton: false });
@@ -289,7 +291,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
               <div 
                 key={item.id} 
                 onClick={() => addToCart(item)}
-                // Menimpa warna background bawaan menu saat dark mode aktif menjadi bg-gray-800
                 className={`p-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white'} dark:!bg-gray-800`}
               >
                 {item.image ? (
