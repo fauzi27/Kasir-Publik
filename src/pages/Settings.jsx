@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, secondaryAuth } from '../firebase';
-import { doc, updateDoc, setDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, collection, query, where, onSnapshot, deleteDoc } from 'firebase/firestore'; // 🔥 TAMBAH deleteDoc
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import Swal from 'sweetalert2';
 
@@ -90,7 +90,7 @@ export default function Settings({ businessData, currentUser, onNavigate }) {
       await setDoc(doc(db, "users", newEmpUser.uid), {
         name: empName,
         email: email,
-        role: 'kasir', // Semua bawahan di-cap kasir, tapi dikontrol oleh accessRights
+        role: 'kasir', 
         accessRights: empAccess, 
         ownerId: currentUser.uid,
         joinedAt: Date.now()
@@ -109,7 +109,6 @@ export default function Settings({ businessData, currentUser, onNavigate }) {
   // === FUNGSI UPDATE AKSES KARYAWAN EXISTING ===
   const handleUpdateExistingAccess = async (empId, accessId, currentValue, currentAccessRights) => {
     try {
-      // Jika sebelumnya tidak punya accessRights, kita buatkan objek barunya
       const updatedRights = currentAccessRights ? { ...currentAccessRights } : { ...DEFAULT_ACCESS };
       updatedRights[accessId] = !currentValue;
 
@@ -119,6 +118,28 @@ export default function Settings({ businessData, currentUser, onNavigate }) {
     } catch (error) {
       Swal.fire('Error', 'Gagal mengubah hak akses', 'error');
     }
+  };
+
+  // === 🔥 FUNGSI HAPUS KARYAWAN 🔥 ===
+  const handleDeleteEmployee = (empId, empName) => {
+    Swal.fire({
+      title: 'Hapus Karyawan?',
+      text: `Akses untuk ${empName} akan dicabut permanen!`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Ya, Hapus!'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          await deleteDoc(doc(db, "users", empId));
+          Swal.fire({ toast: true, position: 'center', icon: 'success', title: 'Karyawan Dihapus', timer: 1500, showConfirmButton: false });
+        } catch (error) {
+          Swal.fire('Error', 'Gagal menghapus karyawan: ' + error.message, 'error');
+        }
+      }
+    });
   };
 
   // === RENDER TAMPILAN ===
@@ -196,17 +217,26 @@ export default function Settings({ businessData, currentUser, onNavigate }) {
               {employees.map(emp => {
                 const rights = emp.accessRights || DEFAULT_ACCESS;
                 return (
-                  <div key={emp.id} className="p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
-                    <div className="flex justify-between items-center mb-3">
-                      <div>
+                  <div key={emp.id} className="p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl relative">
+                    
+                    {/* 🔥 TOMBOL HAPUS KARYAWAN 🔥 */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="pr-8">
                         <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{emp.name}</p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-400">{emp.email}</p>
+                        <span className="inline-block mt-1 bg-indigo-100 text-indigo-700 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">Karyawan</span>
                       </div>
-                      <span className="bg-indigo-100 text-indigo-700 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">Karyawan</span>
+                      <button 
+                        onClick={() => handleDeleteEmployee(emp.id, emp.name)}
+                        className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/30 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 flex items-center justify-center transition active:scale-90 border border-red-100 dark:border-red-800/50 absolute top-3 right-3 shadow-sm"
+                        title="Hapus Karyawan"
+                      >
+                        <i className="fas fa-trash-alt text-xs"></i>
+                      </button>
                     </div>
                     
                     {/* Toggles Khusus Karyawan Ini */}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mt-2">
                       {ACCESS_LIST.map(item => {
                         const hasAccess = rights[item.id] || false;
                         return (
