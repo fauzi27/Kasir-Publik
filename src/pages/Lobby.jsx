@@ -164,7 +164,6 @@ export default function Lobby({ businessData, onNavigate }) {
         
         {/* HEADER LOBI */}
         <div className={`mb-6 flex-none ${broadcast ? 'mt-16' : ''} transition-all`}>
-          <img src="/asset/logokasir.png" alt="Logo" className="w-20 h-20 object-contain mx-auto mb-3 rounded-full shadow-sm bg-white p-1" />
           <h1 
             className={`text-3xl font-extrabold mb-1 ${themeTitle.customHex ? '' : themeTitle.color}`}
             style={themeTitle.customHex ? { color: themeTitle.customHex } : {}}
