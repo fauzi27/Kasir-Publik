@@ -52,13 +52,14 @@ export default function Auth() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       
-      // Simpan profil usaha ke Firestore
+      // 🔥 PERBAIKAN: Simpan profil usaha sebagai BOS MUTLAK (Tanpa ownerId)
       await setDoc(doc(db, "users", user.uid), {
-        name: businessName,
-        address: address,
+        name: businessName, // Nama operator utama
+        shopName: businessName, // Nama toko resmi
+        address: address, // Alamat operator
+        shopAddress: address, // Alamat toko resmi
         email: email,
-        role: 'admin',
-        ownerId: user.uid,
+        role: 'owner', // Stempel mutlak sebagai Bos
         joinedAt: Date.now()
       });
       Swal.fire('Berhasil', 'Akun dibuat! Selamat datang.', 'success');
