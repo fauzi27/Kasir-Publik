@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, writeBatch, setDoc, deleteDoc } from 'firebase/firestore'; // 🔥 TAMBAHAN setDoc & deleteDoc
 import Swal from 'sweetalert2';
 import ReceiptModal from '../components/ReceiptModal';
 
@@ -9,8 +9,12 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const [menus, setMenus] = useState([]);
   const [categories, setCategories] = useState([]);
   
+  // === 🔥 STATE BILL GANTUNG (ACTIVE ORDERS) 🔥 ===
+  const [activeOrders, setActiveOrders] = useState([]);
+  const [isHoldListOpen, setIsHoldListOpen] = useState(false);
+  const [currentHoldId, setCurrentHoldId] = useState(null); // Menyimpan ID Bill jika sedang memanggil meja
+
   // === STATE UI & KERANJANG ===
-  // 1. Ambil data keranjang dari memori (jika kasir habis dari kalkulator/refresh)
   const [cart, setCart] = useState(() => {
     try {
       const savedCart = localStorage.getItem('iszi_saved_cart');
@@ -20,7 +24,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     }
   });
 
-  // 2. Simpan otomatis ke memori setiap kali kasir nambah/kurang menu
   useEffect(() => {
     localStorage.setItem('iszi_saved_cart', JSON.stringify(cart));
   }, [cart]);
@@ -34,7 +37,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const [modalMode, setModalMode] = useState('payment'); // 'payment' atau 'view'
   const [currentTransaction, setCurrentTransaction] = useState(null);
 
-  // Menentukan ID Pemilik Toko
   const shopOwnerId = businessData?.ownerId || currentUser?.uid;
 
   // === MENGAMBIL DATA & CEK KALKULATOR MANUAL ===
@@ -49,6 +51,11 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       setMenus(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // 🔥 Listener untuk Bill Gantung (Sistem Radar Sinkronisasi)
+    const unsubOrders = onSnapshot(collection(db, "users", shopOwnerId, "active_orders"), (snapshot) => {
+      setActiveOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     const tempManual = localStorage.getItem('temp_manual_cart');
     if (tempManual) {
       try {
@@ -60,7 +67,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       localStorage.removeItem('temp_manual_cart'); 
     }
 
-    return () => { unsubCat(); unsubMenu(); };
+    return () => { unsubCat(); unsubMenu(); unsubOrders(); };
   }, [shopOwnerId]);
 
   // === LOGIKA KERANJANG ===
@@ -111,12 +118,93 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         if (result.isConfirmed) {
           setCart([]);
           setBuyerName('');
+          setCurrentHoldId(null); // 🔥 Reset status meja
         }
       });
     }
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+
+  // === 🔥 FUNGSI TAHAN BILL (HOLD CART) 🔥 ===
+  const handleHoldCart = async () => {
+    if (cart.length === 0) return Swal.fire('Kosong', 'Pilih menu terlebih dahulu', 'warning');
+    
+    let nameToSave = buyerName;
+    if (!nameToSave) {
+      const { value: inputName } = await Swal.fire({
+        title: 'Simpan Pesanan',
+        input: 'text',
+        inputLabel: 'Masukkan Nama/Nomor Meja',
+        inputPlaceholder: 'Contoh: Meja 4 / Budi',
+        showCancelButton: true,
+        confirmButtonText: 'Simpan'
+      });
+      if (!inputName) return; 
+      nameToSave = inputName;
+    }
+
+    Swal.fire({ title: 'Menyimpan...', didOpen: () => Swal.showLoading() });
+    try {
+      // Jika pesanan ini panggil ulang dari Meja 4, timpa data Meja 4. Jika baru, buat ID baru.
+      const holdRef = currentHoldId ? doc(db, "users", shopOwnerId, "active_orders", currentHoldId) : doc(collection(db, "users", shopOwnerId, "active_orders"));
+      
+      await setDoc(holdRef, {
+        items: cart,
+        total: cartTotal,
+        buyer: nameToSave,
+        timestamp: Date.now(),
+        operatorName: businessData?.operatorName || 'Kasir',
+      });
+
+      Swal.fire({ toast: true, position: 'center', icon: 'success', title: 'Meja Disimpan!', timer: 1500, showConfirmButton: false });
+      setCart([]);
+      setBuyerName('');
+      setCurrentHoldId(null);
+    } catch (error) {
+      Swal.fire('Error', 'Gagal menyimpan: ' + error.message, 'error');
+    }
+  };
+
+  // Panggil ulang bill yang digantung
+  const resumeOrder = (order) => {
+    if (cart.length > 0) {
+      Swal.fire({
+        title: 'Timpa Keranjang?',
+        text: 'Pesanan yang sedang diketik akan diganti dengan data meja ini.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, Lanjutkan'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          setCart(order.items);
+          setBuyerName(order.buyer);
+          setCurrentHoldId(order.id);
+          setIsHoldListOpen(false);
+        }
+      });
+    } else {
+      setCart(order.items);
+      setBuyerName(order.buyer);
+      setCurrentHoldId(order.id);
+      setIsHoldListOpen(false);
+    }
+  };
+
+  // Hapus bill gantung tanpa dibayar (batal pesanan)
+  const deleteHoldOrder = (id, e) => {
+    e.stopPropagation();
+    Swal.fire({
+      title: 'Hapus Pesanan Meja?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Ya, Batal Pesan'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        await deleteDoc(doc(db, "users", shopOwnerId, "active_orders", id));
+      }
+    });
+  };
 
   // === LOGIKA PEMBAYARAN (CHECKOUT) ===
   const handleCheckoutClick = () => {
@@ -128,7 +216,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       buyer: buyerName || 'Pelanggan Umum',
       timestamp: Date.now(),
       date: new Date().toLocaleString('id-ID'), 
-      // 🔥 REVISI: Menggunakan operatorName dari businessData hasil racikan App.jsx
       operatorName: businessData?.operatorName || 'Kasir', 
       paid: 0,
       change: 0,
@@ -208,7 +295,12 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         }
       });
       
-      // 🔥 REVISI: Tambahkan catch untuk mode offline agar aman
+      // 🔥 Jika ini adalah pesanan dari "Bill Gantung", hapus dari antrian meja
+      if (currentHoldId) {
+        const holdRef = doc(db, "users", shopOwnerId, "active_orders", currentHoldId);
+        batch.delete(holdRef);
+      }
+      
       batch.commit().catch(err => console.log("Tersimpan offline, menunggu koneksi...", err)); 
       
       let successMsg = finalMethod === 'TUNAI' ? `Kembalian: Rp ${changeAmount.toLocaleString('id-ID')}` : 'Berhasil Disimpan';
@@ -218,6 +310,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       setModalMode('view');
       setCart([]);
       setBuyerName('');
+      setCurrentHoldId(null); // Reset ID
 
     } catch (error) {
       Swal.fire('Error', 'Gagal memproses pembayaran: ' + error.message, 'error');
@@ -244,9 +337,21 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
           <div className="flex items-center gap-2">
             <h2 className="font-bold text-gray-700 dark:text-gray-200 text-sm md:text-base">Mulai Jualan</h2>
           </div>
-          <button onClick={() => onNavigate('calculator')} className="text-teal-600 dark:text-teal-400 text-xs font-bold border border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1">
-            <i className="fas fa-calculator"></i> <span className="hidden md:inline">Manual</span>
-          </button>
+          
+          {/* 🔥 TOMBOL KANAN ATAS (BILL GANTUNG & KALKULATOR) */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => setIsHoldListOpen(true)} className="relative text-orange-600 dark:text-orange-400 text-xs font-bold border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1 shadow-sm">
+              <i className="fas fa-clock"></i> <span className="hidden md:inline">Gantung</span>
+              {activeOrders.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-bold shadow-md">
+                  {activeOrders.length}
+                </span>
+              )}
+            </button>
+            <button onClick={() => onNavigate('calculator')} className="text-teal-600 dark:text-teal-400 text-xs font-bold border border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1 shadow-sm">
+              <i className="fas fa-calculator"></i> <span className="hidden md:inline">Manual</span>
+            </button>
+          </div>
         </div>
         
         {/* TAB KATEGORI */}
@@ -364,12 +469,23 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-0.5">Total Tagihan</p>
             <p className="text-2xl font-extrabold text-yellow-400 tracking-tight">Rp {cartTotal.toLocaleString('id-ID')}</p>
           </div>
-          <button 
-            onClick={handleCheckoutClick}
-            className="bg-green-500 hover:bg-green-600 text-white px-8 py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(34,197,94,0.4)] transition transform active:scale-95 flex items-center gap-2 text-base"
-          >
-            Bayar <i className="fas fa-chevron-right text-xs"></i>
-          </button>
+          
+          {/* 🔥 DUA TOMBOL (SIMPAN & BAYAR) 🔥 */}
+          <div className="flex gap-2 w-1/2 md:w-auto">
+            <button 
+              onClick={handleHoldCart}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(249,115,22,0.4)] transition transform active:scale-95 flex items-center justify-center"
+              title="Simpan Meja"
+            >
+              <i className="fas fa-save"></i>
+            </button>
+            <button 
+              onClick={handleCheckoutClick}
+              className="flex-1 md:px-8 bg-green-500 hover:bg-green-600 text-white py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(34,197,94,0.4)] transition transform active:scale-95 flex items-center justify-center gap-2 text-base"
+            >
+              Bayar <i className="fas fa-chevron-right text-xs"></i>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -382,6 +498,50 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         onProcessPayment={processPayment}
       />
       
+      {/* 🔥 MODAL DAFTAR BILL GANTUNG 🔥 */}
+      {isHoldListOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm transition-opacity">
+          <div className="bg-white dark:bg-gray-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up sm:animate-zoom-in flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <i className="fas fa-clock text-orange-500"></i> Daftar Meja / Antrian
+              </h3>
+              <button onClick={() => setIsHoldListOpen(false)} className="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 active:scale-90 transition">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            
+            <div className="p-3 overflow-y-auto flex-1 bg-gray-50/50 dark:bg-gray-900/50">
+              {activeOrders.length === 0 ? (
+                 <div className="text-center py-10 text-gray-400 dark:text-gray-500">
+                   <i className="fas fa-receipt text-4xl mb-3 opacity-50"></i>
+                   <p className="text-sm">Tidak ada meja yang ditahan.</p>
+                 </div>
+              ) : (
+                <div className="space-y-2">
+                  {activeOrders.map(order => (
+                    <div key={order.id} onClick={() => resumeOrder(order)} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex justify-between items-center cursor-pointer hover:border-orange-400 dark:hover:border-orange-500 active:scale-95 transition group">
+                      <div>
+                        <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{order.buyer}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                          <i className="fas fa-utensils"></i> {order.items.reduce((sum, i) => sum + i.qty, 0)} Item | Oleh: {order.operatorName}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-extrabold text-orange-600 dark:text-orange-400 text-sm">Rp {order.total.toLocaleString('id-ID')}</p>
+                        <button onClick={(e) => deleteHoldOrder(order.id, e)} className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/30 text-red-500 hover:bg-red-500 hover:text-white transition shadow-sm flex items-center justify-center">
+                          <i className="fas fa-trash-alt text-xs"></i>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
