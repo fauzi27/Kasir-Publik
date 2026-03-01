@@ -8,9 +8,15 @@ export default function Lobby({ businessData, onNavigate }) {
   // === STATE STATUS INTERNET ===
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // === DETEKSI ROLE & OWNER ===
-  const isKasir = businessData?.role === 'kasir';
+  // === DETEKSI ROLE & HAK AKSES (GRANULAR RBAC) ===
+  const isOwner = businessData?.role !== 'kasir';
   const shopOwnerId = businessData?.ownerId || auth.currentUser?.uid;
+
+  // Fungsi Pengecek Hak Akses untuk menyembunyikan/menampilkan tombol
+  const hasAccess = (view) => {
+    if (isOwner) return true; // Bos selalu bisa lihat semuanya
+    return businessData?.accessRights?.[view] === true;
+  };
 
   // === AMBIL DATA TEMA DARI FIREBASE ===
   const themeData = businessData?.themeData || {};
@@ -120,91 +126,101 @@ export default function Lobby({ businessData, onNavigate }) {
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             {businessData?.shopAddress || businessData?.address || 'Nusadua Bali'}
           </p>
-          {isKasir && (
+          {!isOwner && (
             <span className="inline-block mt-2 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full">
-              Mode Kasir
+              Karyawan: {businessData?.name || businessData?.email?.split('@')[0]}
             </span>
           )}
         </div>
 
-        {/* GRID TOMBOL MENU */}
+        {/* GRID TOMBOL MENU (DENGAN FILTER HAK AKSES) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full max-w-sm md:max-w-3xl flex-none">
           
-          <button 
-            onClick={() => onNavigate('cashier')} 
-            className={`col-span-2 md:col-span-4 hover:opacity-90 p-4 rounded-xl shadow-lg flex items-center gap-3 transition transform active:scale-95 text-left text-white ${cashierTheme.customHex ? '' : cashierTheme.color}`}
-            style={cashierTheme.customHex ? { backgroundColor: cashierTheme.customHex } : {}}
-          >
-            <div className="bg-black bg-opacity-20 p-3 rounded-full w-10 h-10 flex items-center justify-center">
-              <i className={`fas ${cashierTheme.icon} text-lg`}></i>
-            </div>
-            <div>
-              <h3 className="font-bold text-base">{cashierTheme.text}</h3>
-              <p className="text-[10px] text-gray-200">Buka Kasir Menu</p>
-            </div>
-          </button>
+          {hasAccess('cashier') && (
+            <button 
+              onClick={() => onNavigate('cashier')} 
+              className={`col-span-2 md:col-span-4 hover:opacity-90 p-4 rounded-xl shadow-lg flex items-center gap-3 transition transform active:scale-95 text-left text-white ${cashierTheme.customHex ? '' : cashierTheme.color}`}
+              style={cashierTheme.customHex ? { backgroundColor: cashierTheme.customHex } : {}}
+            >
+              <div className="bg-black bg-opacity-20 p-3 rounded-full w-10 h-10 flex items-center justify-center">
+                <i className={`fas ${cashierTheme.icon} text-lg`}></i>
+              </div>
+              <div>
+                <h3 className="font-bold text-base">{cashierTheme.text}</h3>
+                <p className="text-[10px] text-gray-200">Buka Kasir Menu</p>
+              </div>
+            </button>
+          )}
 
-          <button 
-            onClick={() => onNavigate('report')} 
-            className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${reportTheme.customHex ? '' : reportTheme.color}`}
-            style={reportTheme.customHex ? { backgroundColor: reportTheme.customHex } : {}}
-          >
-            <i className={`fas ${reportTheme.icon} text-2xl mb-1`}></i>
-            <h3 className="font-bold text-sm">{reportTheme.text}</h3>
-          </button>
+          {hasAccess('report') && (
+            <button 
+              onClick={() => onNavigate('report')} 
+              className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${reportTheme.customHex ? '' : reportTheme.color}`}
+              style={reportTheme.customHex ? { backgroundColor: reportTheme.customHex } : {}}
+            >
+              <i className={`fas ${reportTheme.icon} text-2xl mb-1`}></i>
+              <h3 className="font-bold text-sm">{reportTheme.text}</h3>
+            </button>
+          )}
 
-          <button 
-            onClick={() => onNavigate('calculator')} 
-            className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${calcTheme.customHex ? '' : calcTheme.color}`}
-            style={calcTheme.customHex ? { backgroundColor: calcTheme.customHex } : {}}
-          >
-            <i className={`fas ${calcTheme.icon} text-2xl mb-1`}></i>
-            <h3 className="font-bold text-xs">{calcTheme.text}</h3>
-          </button>
+          {hasAccess('calculator') && (
+            <button 
+              onClick={() => onNavigate('calculator')} 
+              className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${calcTheme.customHex ? '' : calcTheme.color}`}
+              style={calcTheme.customHex ? { backgroundColor: calcTheme.customHex } : {}}
+            >
+              <i className={`fas ${calcTheme.icon} text-2xl mb-1`}></i>
+              <h3 className="font-bold text-xs">{calcTheme.text}</h3>
+            </button>
+          )}
 
-          {!isKasir && (
-            <>
-              <button 
-                onClick={() => onNavigate('stock')} 
-                className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${stockTheme.customHex ? '' : stockTheme.color}`}
-                style={stockTheme.customHex ? { backgroundColor: stockTheme.customHex } : {}}
-              >
-                <i className={`fas ${stockTheme.icon} text-2xl mb-1`}></i>
-                <h3 className="font-bold text-sm">{stockTheme.text}</h3>
-              </button>
+          {hasAccess('stock') && (
+            <button 
+              onClick={() => onNavigate('stock')} 
+              className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${stockTheme.customHex ? '' : stockTheme.color}`}
+              style={stockTheme.customHex ? { backgroundColor: stockTheme.customHex } : {}}
+            >
+              <i className={`fas ${stockTheme.icon} text-2xl mb-1`}></i>
+              <h3 className="font-bold text-sm">{stockTheme.text}</h3>
+            </button>
+          )}
 
-              <button 
-                onClick={() => onNavigate('table')} 
-                className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${tableTheme.customHex ? '' : tableTheme.color}`}
-                style={tableTheme.customHex ? { backgroundColor: tableTheme.customHex } : {}}
-              >
-                <i className={`fas ${tableTheme.icon} text-2xl mb-1`}></i>
-                <h3 className="font-bold text-xs">{tableTheme.text}</h3>
-              </button>
+          {hasAccess('table') && (
+            <button 
+              onClick={() => onNavigate('table')} 
+              className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${tableTheme.customHex ? '' : tableTheme.color}`}
+              style={tableTheme.customHex ? { backgroundColor: tableTheme.customHex } : {}}
+            >
+              <i className={`fas ${tableTheme.icon} text-2xl mb-1`}></i>
+              <h3 className="font-bold text-xs">{tableTheme.text}</h3>
+            </button>
+          )}
 
-              <button 
-                onClick={() => onNavigate('admin')} 
-                className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${adminTheme.customHex ? '' : adminTheme.color}`}
-                style={adminTheme.customHex ? { backgroundColor: adminTheme.customHex } : {}}
-              >
-                <i className={`fas ${adminTheme.icon} text-2xl mb-1`}></i>
-                <h3 className="font-bold text-xs">{adminTheme.text}</h3>
-              </button>
+          {hasAccess('admin') && (
+            <button 
+              onClick={() => onNavigate('admin')} 
+              className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${adminTheme.customHex ? '' : adminTheme.color}`}
+              style={adminTheme.customHex ? { backgroundColor: adminTheme.customHex } : {}}
+            >
+              <i className={`fas ${adminTheme.icon} text-2xl mb-1`}></i>
+              <h3 className="font-bold text-xs">{adminTheme.text}</h3>
+            </button>
+          )}
 
-              <button 
-                onClick={() => onNavigate('settings')} 
-                className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${settingTheme.customHex ? '' : settingTheme.color}`}
-                style={settingTheme.customHex ? { backgroundColor: settingTheme.customHex } : {}}
-              >
-                <i className={`fas ${settingTheme.icon} text-2xl mb-1`}></i>
-                <h3 className="font-bold text-xs">{settingTheme.text}</h3>
-              </button>
-            </>
+          {hasAccess('settings') && (
+            <button 
+              onClick={() => onNavigate('settings')} 
+              className={`hover:opacity-90 p-4 rounded-xl shadow-lg flex flex-col items-center gap-2 transition transform active:scale-95 text-center justify-center text-white ${settingTheme.customHex ? '' : settingTheme.color}`}
+              style={settingTheme.customHex ? { backgroundColor: settingTheme.customHex } : {}}
+            >
+              <i className={`fas ${settingTheme.icon} text-2xl mb-1`}></i>
+              <h3 className="font-bold text-xs">{settingTheme.text}</h3>
+            </button>
           )}
 
         </div>
 
-        {/* 🔥 INDIKATOR ONLINE / OFFLINE DIPINDAH KE BAWAH 🔥 */}
+        {/* 🔥 INDIKATOR ONLINE / OFFLINE 🔥 */}
         <div className="mt-8 flex justify-center w-full transition-all duration-300">
           <div className={`px-3 py-1.5 rounded-full text-[10px] font-extrabold flex items-center gap-2 shadow-sm border uppercase tracking-wider ${
             isOnline 
@@ -224,7 +240,7 @@ export default function Lobby({ businessData, onNavigate }) {
         {/* TOMBOL ACTION BAWAH */}
         <div className="flex gap-2 justify-center mt-3">
           <button onClick={handleDarkMode} className="text-xs bg-gray-700 hover:bg-gray-800 text-gray-200 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Dark Mode</button>
-          {!isKasir && <button onClick={handleBackup} className="text-xs bg-green-700 hover:bg-green-800 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Backup CSV</button>}
+          {isOwner && <button onClick={handleBackup} className="text-xs bg-green-700 hover:bg-green-800 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Backup CSV</button>}
           <button onClick={handleLogout} className="text-xs bg-red-700 hover:bg-red-800 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Logout</button>
         </div>
         
