@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react'; // 🔥 TAMBAHAN useRef
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore'; // 🔥 TAMBAHAN writeBatch
 import Swal from 'sweetalert2';
 
 export default function Admin({ businessData, currentUser, onNavigate }) {
@@ -19,6 +19,9 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
   const [newStock, setNewStock] = useState('100');
   const [newImageFile, setNewImageFile] = useState(null);
   const [previewImg, setPreviewImg] = useState(null);
+  
+  // 🔥 REFERENSI INPUT FILE UNTUK IMPORT CSV
+  const fileInputRef = useRef(null);
 
   const shopOwnerId = businessData?.ownerId || currentUser?.uid;
 
@@ -191,7 +194,6 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
             return Swal.fire('Error', 'Nama dan Harga harus diisi dengan angka yang valid!', 'error');
         }
 
-        // 🔥 SATPAM LIMIT FOTO (Hanya cek jika dia upload gambar baru dan sebelumnya TIDAK punya gambar)
         if (formValues.imageFile && (!item.image || item.image.trim() === '')) {
           const maxImages = businessData?.maxImages || 0;
           const currentImages = menus.filter(m => m.image && m.image.trim() !== '').length;
@@ -271,6 +273,123 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
 
     Swal.fire({ title: 'Hapus Kategori', html: listHtml, showConfirmButton: false, showCloseButton: true });
   };
+
+  // === 🔥 FUNGSI DOWNLOAD TEMPLATE CSV 🔥 ===
+  const downloadTemplateCSV = () => {
+    const headers = "Nama Menu,Harga,Kategori,Stok\n";
+    const example1 = "Nasi Goreng Spesial,25000,Makanan,50\n";
+    const example2 = "Es Teh Manis,5000,Minuman,100\n";
+    const csvContent = headers + example1 + example2;
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = "Template_Menu_ISZI.csv";
+    link.click();
+  };
+
+  // === 🔥 FUNGSI IMPORT CSV MASAL 🔥 ===
+  const handleImportCSV = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Reset input agar bisa upload file yang sama berkali-kali
+    if(fileInputRef.current) fileInputRef.current.value = '';
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const csvText = event.target.result;
+      // Memecah berdasarkan baris baru, abaikan baris kosong
+      const rows = csvText.split('\n').filter(row => row.trim().length > 0); 
+      
+      if (rows.length <= 1) {
+        return Swal.fire('Error', 'File CSV kosong atau hanya berisi Header', 'error');
+      }
+
+      // Menyiapkan array menu baru dari baris ke-2 dst
+      const newMenusData = [];
+      for (let i = 1; i < rows.length; i++) {
+        // Memecah berdasarkan koma (,)
+        const cols = rows[i].split(',');
+        if (cols.length >= 3) {
+          const name = cols[0].trim();
+          const price = parseInt(cols[1].trim());
+          const category = cols[2].trim().toLowerCase();
+          const stock = cols[3] ? parseInt(cols[3].trim()) : 0;
+
+          if (name && !isNaN(price)) {
+            let icon = 'fa-utensils';
+            let color = 'bg-white';
+            if(category.includes('minum')) { icon = 'fa-glass-water'; color = 'bg-blue-50'; }
+            if(category.includes('camil')) { icon = 'fa-bread-slice'; color = 'bg-yellow-50'; }
+            
+            newMenusData.push({
+              name: name,
+              price: price,
+              category: category || 'makanan',
+              icon: icon,
+              color: color,
+              stock: isNaN(stock) ? 0 : stock,
+              favorite: false,
+              image: ""
+            });
+          }
+        }
+      }
+
+      if (newMenusData.length === 0) {
+        return Swal.fire('Error', 'Format data salah atau tidak ada data menu valid', 'error');
+      }
+
+      // 🔥 SATPAM LIMIT MENU (Cek total kuota sebelum di-batch) 🔥
+      const maxMenus = businessData?.maxMenus || 0;
+      if (maxMenus > 0 && (menus.length + newMenusData.length) > maxMenus) {
+         return Swal.fire({
+           icon: 'error',
+           title: 'Limit Tidak Mencukupi',
+           html: `File ini berisi <b>${newMenusData.length} menu</b>.<br>Sisa kuota menu Anda hanya <b>${maxMenus - menus.length}</b>.<br><br>Silakan kurangi isi file CSV atau hubungi Admin.`
+         });
+      }
+
+      Swal.fire({
+        title: `Import ${newMenusData.length} Menu?`,
+        text: "Data akan langsung ditambahkan ke daftar menu.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, Import',
+        confirmButtonColor: '#3b82f6'
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          Swal.fire({title: 'Memproses Batch...', allowOutsideClick: false, didOpen: () => Swal.showLoading()});
+          
+          try {
+            // Gunakan WriteBatch agar sekali jalan masuk semua
+            const batch = writeBatch(db);
+            const menusRef = collection(db, "users", shopOwnerId, "menus");
+            
+            // Loop data baru dan buat dokumen
+            newMenusData.forEach((menuItem) => {
+              const newDocRef = doc(menusRef); // Buat ID random otomatis
+              batch.set(newDocRef, menuItem);
+            });
+
+            // Eksekusi semua secara serentak
+            await batch.commit();
+            Swal.fire({icon: 'success', title: 'Berhasil Import', text: `${newMenusData.length} menu ditambahkan.`, timer: 2000, showConfirmButton: false});
+          } catch (error) {
+            Swal.fire('Error', 'Gagal memproses batch import: ' + error.message, 'error');
+          }
+        }
+      });
+    };
+
+    reader.onerror = () => {
+      Swal.fire('Error', 'Gagal membaca file CSV', 'error');
+    };
+
+    reader.readAsText(file);
+  };
+
 
   // === FILTER & SORTING ARRAY ===
   const toggleSort = () => {
@@ -367,6 +486,27 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
             <button onClick={handleAddMenu} className="w-full bg-blue-600 text-white py-2 rounded font-bold text-sm hover:bg-blue-700 active:scale-95 transition">
               <i className="fas fa-save mr-1"></i> Simpan ke Cloud
             </button>
+
+            {/* 🔥 AREA TOMBOL IMPORT CSV 🔥 */}
+            <div className="grid grid-cols-2 gap-2 mt-2">
+               <button onClick={downloadTemplateCSV} className="w-full bg-gray-100 text-gray-700 py-2 rounded font-bold text-xs hover:bg-gray-200 border border-gray-300 active:scale-95 transition flex items-center justify-center gap-1">
+                 <i className="fas fa-download"></i> Template CSV
+               </button>
+               
+               <div className="relative w-full">
+                 <input 
+                   type="file" 
+                   accept=".csv" 
+                   ref={fileInputRef}
+                   onChange={handleImportCSV} 
+                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                 />
+                 <button className="w-full bg-green-500 text-white py-2 rounded font-bold text-xs hover:bg-green-600 border border-green-600 active:scale-95 transition flex items-center justify-center gap-1">
+                   <i className="fas fa-file-import"></i> Import CSV
+                 </button>
+               </div>
+            </div>
+
           </div>
         </div>
 
