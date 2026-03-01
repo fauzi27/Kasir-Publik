@@ -1,24 +1,23 @@
-const CACHE_NAME = 'iszi-react-v2.01'; 
+const CACHE_NAME = 'iszi-react-v2.2'; // Naikkan versinya
 
-// Hanya simpan file inti yang pasti ada di folder public/
 const STATIC_ASSETS = [
   '/', 
   '/index.html',
   '/manifest.json'
 ];
 
-// 1. INSTALL
+// 1. INSTALL: Langsung paksa aktif (Skip Waiting)
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('✅ Menyimpan Aset Utama ISZI React...');
+      console.log('✅ Mengunduh Aset Terbaru...');
       return cache.addAll(STATIC_ASSETS);
     })
   );
 });
 
-// 2. ACTIVATE
+// 2. ACTIVATE: Langsung ambil alih halaman dan hapus memori lama
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
@@ -30,11 +29,11 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// 3. FETCH (JARING RAKSASA UNTUK VITE BUNDLER)
+// 3. FETCH: STRATEGI PINTAR (ANTI BLANK PUTIH)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // 🛑 Abaikan request Firebase / API agar data kasir selalu real-time
+  // 🛑 Abaikan request Firebase / Database API
   if (url.hostname.includes('firestore.googleapis.com') || 
       url.hostname.includes('identitytoolkit') || 
       url.hostname.includes('google') ||
@@ -42,30 +41,35 @@ self.addEventListener('fetch', (event) => {
       return; 
   }
 
+  // 🟢 STRATEGI NETWORK-FIRST UNTUK HTML (Selalu ambil UI terbaru dari Vercel)
+  if (event.request.mode === 'navigate' || event.request.headers.get('accept').includes('text/html')) {
+    event.respondWith(
+      fetch(event.request).then((networkResp) => {
+        // Jika sukses ambil dari internet, simpan ke memori sebagai cadangan
+        const clone = networkResp.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return networkResp;
+      }).catch(() => {
+        // Jika tidak ada internet (offline), baru pakai cadangan dari memori
+        return caches.match('/index.html');
+      })
+    );
+    return;
+  }
+
+  // 🔵 STRATEGI CACHE-FIRST UNTUK ASET LAIN (Gambar, JS, CSS agar loading ngebut)
   event.respondWith(
     caches.match(event.request).then((cachedResp) => {
-      // Jika ada di memori offline, gunakan itu
-      if (cachedResp) return cachedResp;
+      if (cachedResp) return cachedResp; // Langsung pakai dari memori jika ada
 
-      // Jika tidak, ambil dari internet lalu simpan
       return fetch(event.request).then((networkResp) => {
-        // Jangan simpan error
         if (!networkResp || networkResp.status !== 200 || networkResp.type !== 'basic') {
           return networkResp;
         }
-
-        const responseToCache = networkResp.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-
+        const clone = networkResp.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         return networkResp;
-      }).catch(() => {
-        // JIKA OFFLINE: Arahkan semua navigasi rute kembali ke index.html agar React tidak nge-blank
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      });
+      }).catch(() => {});
     })
   );
 });
