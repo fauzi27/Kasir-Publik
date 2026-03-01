@@ -4,7 +4,8 @@ import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import Swal from 'sweetalert2';
 
-export default function SuperAdmin({ currentUser }) {
+// 🔥 TAMBAHKAN prop onImpersonate di sini
+export default function SuperAdmin({ currentUser, onImpersonate }) {
   const [owners, setOwners] = useState([]);
   const [totalStaff, setTotalStaff] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -18,28 +19,24 @@ export default function SuperAdmin({ currentUser }) {
     try {
       const querySnapshot = await getDocs(collection(db, "users"));
       let ownerList = [];
-      let staffMap = {}; // Buku catatan sementara untuk menghitung karyawan per bos
+      let staffMap = {}; 
       let staffCount = 0;
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         if (data.ownerId) {
-          // Jika dia karyawan, tambah total global, lalu catat di buku bosnya
           staffCount++;
           staffMap[data.ownerId] = (staffMap[data.ownerId] || 0) + 1;
         } else {
-          // Jika dia Bos, masukkan ke antrean
           ownerList.push({ id: doc.id, ...data });
         }
       });
 
-      // Gabungkan buku catatan karyawan tadi ke data Bos masing-masing
       const enrichedOwnerList = ownerList.map(owner => ({
         ...owner,
-        staffCount: staffMap[owner.id] || 0 // Jika tidak ada di buku, berarti 0 karyawan
+        staffCount: staffMap[owner.id] || 0 
       }));
 
-      // Urutkan klien terbaru di atas
       enrichedOwnerList.sort((a, b) => (b.joinedAt || 0) - (a.joinedAt || 0));
       
       setOwners(enrichedOwnerList);
@@ -130,7 +127,7 @@ export default function SuperAdmin({ currentUser }) {
     });
   };
 
-  // 🔥 MESIN PENCARIAN (Filter data sebelum di-render ke tabel)
+  // 🔥 MESIN PENCARIAN
   const filteredOwners = owners.filter(owner => {
     const searchLower = searchTerm.toLowerCase();
     const shopName = (owner.shopName || owner.name || '').toLowerCase();
@@ -260,7 +257,6 @@ export default function SuperAdmin({ currentUser }) {
                       <td className="p-4">
                         <p className="font-bold text-white text-base">{owner.shopName || owner.name}</p>
                         
-                        {/* 🔥 BADGE KARYAWAN & ID DITAMBAHKAN DI SINI */}
                         <div className="flex flex-wrap items-center gap-2 mt-1.5">
                           <p className="text-[10px] text-slate-400 font-mono uppercase">ID: {owner.id.slice(0, 8)}...</p>
                           <span className={`text-[10px] px-2 py-0.5 rounded-md border flex items-center gap-1 font-bold ${
@@ -286,6 +282,17 @@ export default function SuperAdmin({ currentUser }) {
                         </div>
                       </td>
                       <td className="p-4 flex justify-center gap-2">
+                        {/* 🔥 TOMBOL MATA DEWA DITAMBAHKAN DI SINI */}
+                        {onImpersonate && (
+                          <button 
+                            onClick={() => onImpersonate(owner.id)}
+                            className="w-9 h-9 rounded-xl bg-purple-900/30 text-purple-400 border border-purple-800/50 hover:bg-purple-800/50 hover:text-white flex items-center justify-center transition shadow-sm" 
+                            title="Masuk sebagai Klien (Mata Dewa)"
+                          >
+                            <i className="fas fa-user-secret"></i>
+                          </button>
+                        )}
+                        
                         <button 
                           onClick={() => handleToggleSuspend(owner)}
                           className={`w-9 h-9 rounded-xl flex items-center justify-center transition shadow-sm border ${
