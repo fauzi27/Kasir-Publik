@@ -11,7 +11,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [globalTx, setGlobalTx] = useState(0);
 
-  // === AMBIL SEMUA DATA & KELOMPOKKAN DETAIL KARYAWAN ===
+  // === AMBIL SEMUA DATA & HITUNG KUOTA REAL-TIME ===
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
@@ -39,18 +39,38 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
 
       const enrichedOwnerList = await Promise.all(ownerList.map(async (owner) => {
         let currentUsage = 0;
+        let menuUsage = 0;
+        let imageUsage = 0;
+
         try {
-          const q = query(collection(db, "users", owner.id, "transactions"), where("timestamp", ">=", startOfMonth.getTime()));
-          const snap = await getCountFromServer(q);
-          currentUsage = snap.data().count;
+          // 1. Hitung Penggunaan Transaksi Bulan Ini
+          const qTx = query(collection(db, "users", owner.id, "transactions"), where("timestamp", ">=", startOfMonth.getTime()));
+          const snapTx = await getCountFromServer(qTx);
+          currentUsage = snapTx.data().count;
           totalTxSistem += currentUsage; 
-        } catch (err) { console.error("Gagal hitung kuota", err); }
+
+          // 2. Hitung Total Menu
+          const qMenu = collection(db, "users", owner.id, "menus");
+          const snapMenu = await getDocs(qMenu); // Pakai getDocs karena kita butuh ngecek field image
+          menuUsage = snapMenu.size;
+
+          // 3. Hitung Total Foto (Menu yang field 'image'-nya tidak kosong)
+          snapMenu.forEach((doc) => {
+            const menuData = doc.data();
+            if (menuData.image && menuData.image.trim() !== '') {
+              imageUsage++;
+            }
+          });
+
+        } catch (err) { console.error(`Gagal hitung kuota untuk ${owner.name}`, err); }
 
         return {
           ...owner,
           staffList: staffMap[owner.id] || [], 
           staffCount: (staffMap[owner.id] || []).length,
-          currentUsage: currentUsage
+          currentUsage: currentUsage,
+          menuUsage: menuUsage,      // 🔥 Simpan data menu terpakai
+          imageUsage: imageUsage     // 🔥 Simpan data foto terpakai
         };
       }));
 
@@ -69,7 +89,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
     fetchAllData();
   }, []);
 
-  // === 🔥 FUNGSI MELIHAT DETAIL KARYAWAN ===
+  // === FUNGSI MELIHAT DETAIL KARYAWAN ===
   const handleViewStaff = (owner) => {
     if (!owner.staffList || owner.staffList.length === 0) {
       return Swal.fire({ icon: 'info', title: 'Belum Ada Kasir', text: 'Toko ini belum menambahkan karyawan.', confirmButtonColor: '#3b82f6' });
@@ -114,7 +134,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
     });
   };
 
-  // === 🔥 FUNGSI MULTI-LIMIT ===
+  // === FUNGSI MULTI-LIMIT ===
   const handleEditLimit = async (owner) => {
     const { value: formValues } = await Swal.fire({
       title: 'Atur Multi-Limit SaaS',
@@ -347,7 +367,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
 
                       <td className="p-4 align-top text-slate-300 font-mono text-xs pt-5">{owner.email}</td>
                       
-                      {/* KOLOM LIMIT & EXPIRED (SUDAH DI PERJELAS) */}
+                      {/* KOLOM LIMIT & EXPIRED (YANG BARU) */}
                       <td className="p-4">
                         <div className="flex items-center gap-2 mb-3">
                           {isExpired ? (
@@ -359,7 +379,6 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
                           )}
                         </div>
 
-                        {/* HIGHLIGHT MASA AKTIF */}
                         <div className="mb-3">
                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold border shadow-sm ${isExpired ? 'bg-red-900/40 text-red-400 border-red-500/50' : owner.expiredAt ? 'bg-blue-900/30 text-blue-400 border-blue-500/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
                              <i className="fas fa-calendar-alt"></i>
@@ -370,15 +389,16 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
                         <div className="flex flex-col gap-1.5">
                           {/* Limit Transaksi */}
                           <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-2 max-w-max ${(owner.maxTransactions > 0 && owner.currentUsage >= owner.maxTransactions) ? 'bg-red-900/40 text-red-400 border-red-800/50' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>
-                            <i className="fas fa-receipt w-3 text-center"></i> Nota: {owner.maxTransactions > 0 ? `${owner.currentUsage} / ${owner.maxTransactions}` : '∞ (Unlimited)'}
+                            <i className="fas fa-receipt w-3 text-center"></i> Nota: {owner.maxTransactions > 0 ? `${owner.currentUsage} / ${owner.maxTransactions}` : `${owner.currentUsage} (Unlimited)`}
                           </span>
-                          {/* Limit Menu & Foto */}
+                          
+                          {/* 🔥 Limit Menu & Foto (SEKARANG MENAMPILKAN TERPAKAI/MAKSIMAL) 🔥 */}
                           <div className="flex gap-2">
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded border bg-slate-950 text-slate-400 border-slate-800 flex items-center gap-2 max-w-max">
-                              <i className="fas fa-hamburger w-3 text-center"></i> Menu: {owner.maxMenus > 0 ? `Max ${owner.maxMenus}` : '∞'}
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-2 max-w-max ${(owner.maxMenus > 0 && owner.menuUsage >= owner.maxMenus) ? 'bg-red-900/40 text-red-400 border-red-800/50' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>
+                              <i className="fas fa-hamburger w-3 text-center"></i> Menu: {owner.maxMenus > 0 ? `${owner.menuUsage} / ${owner.maxMenus}` : `${owner.menuUsage} (Unlimited)`}
                             </span>
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded border bg-slate-950 text-slate-400 border-slate-800 flex items-center gap-2 max-w-max">
-                              <i className="fas fa-image w-3 text-center"></i> Foto: {owner.maxImages > 0 ? `Max ${owner.maxImages}` : '∞'}
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-2 max-w-max ${(owner.maxImages > 0 && owner.imageUsage >= owner.maxImages) ? 'bg-red-900/40 text-red-400 border-red-800/50' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>
+                              <i className="fas fa-image w-3 text-center"></i> Foto: {owner.maxImages > 0 ? `${owner.imageUsage} / ${owner.maxImages}` : `${owner.imageUsage} (Unlimited)`}
                             </span>
                           </div>
                         </div>
