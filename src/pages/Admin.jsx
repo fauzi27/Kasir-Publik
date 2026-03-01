@@ -67,7 +67,29 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
   const handleAddMenu = async () => {
     if (!newName || !newPrice) return Swal.fire('Error', 'Nama dan harga wajib diisi', 'error');
 
-    // 🔥 Perbaikan Kategori: Pastikan huruf kecil agar seragam
+    // 🔥 1. SATPAM LIMIT MENU 🔥
+    const maxMenus = businessData?.maxMenus || 0;
+    if (maxMenus > 0 && menus.length >= maxMenus) {
+      return Swal.fire({
+        icon: 'error',
+        title: 'Limit Menu Habis',
+        html: `Anda telah mencapai batas maksimal <b>${maxMenus} menu</b>.<br>Silakan hubungi Admin ISZI untuk upgrade kuota.`
+      });
+    }
+
+    // 🔥 2. SATPAM LIMIT FOTO (Cek sebelum upload) 🔥
+    if (newImageFile) {
+      const maxImages = businessData?.maxImages || 0;
+      const currentImages = menus.filter(m => m.image && m.image.trim() !== '').length;
+      if (maxImages > 0 && currentImages >= maxImages) {
+        return Swal.fire({
+          icon: 'error',
+          title: 'Limit Foto Habis',
+          html: `Anda telah mencapai batas maksimal upload <b>${maxImages} foto</b>.<br>Silakan hubungi Admin ISZI untuk upgrade kuota.`
+        });
+      }
+    }
+
     let cat = activeCategory === 'all' ? 'makanan' : activeCategory.toLowerCase();
     let icon = 'fa-utensils';
     let color = 'bg-white';
@@ -112,9 +134,8 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
     setDoc(doc(db, "users", shopOwnerId, "menus", item.id), { favorite: !item.favorite }, { merge: true });
   };
 
-  // 🔥 BARU: FUNGSI EDIT MENU (SWEETALERT POPUP)
+  // === FUNGSI EDIT MENU ===
   const handleEditMenu = async (item) => {
-    // Siapkan opsi dropdown kategori
     let catOptions = `<option value="makanan">makanan</option>
                       <option value="minuman">minuman</option>
                       <option value="camilan">camilan</option>`;
@@ -170,6 +191,19 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
             return Swal.fire('Error', 'Nama dan Harga harus diisi dengan angka yang valid!', 'error');
         }
 
+        // 🔥 SATPAM LIMIT FOTO (Hanya cek jika dia upload gambar baru dan sebelumnya TIDAK punya gambar)
+        if (formValues.imageFile && (!item.image || item.image.trim() === '')) {
+          const maxImages = businessData?.maxImages || 0;
+          const currentImages = menus.filter(m => m.image && m.image.trim() !== '').length;
+          if (maxImages > 0 && currentImages >= maxImages) {
+            return Swal.fire({
+              icon: 'error',
+              title: 'Limit Foto Habis',
+              html: `Anda telah mencapai batas maksimal <b>${maxImages} foto</b>.<br>Silakan hubungi Admin ISZI untuk upgrade kuota.`
+            });
+          }
+        }
+
         let newIcon = item.icon || 'fa-utensils';
         let newColor = item.color || 'bg-white';
         if(formValues.category.includes('minum')) { newIcon = 'fa-glass-water'; newColor = 'bg-blue-50'; }
@@ -200,7 +234,6 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
     }
   };
 
-
   // === FUNGSI KATEGORI (TAMBAH & HAPUS) ===
   const addCategoryPrompt = async () => {
     const { value: catName } = await Swal.fire({ title: 'Tambah Kategori', input: 'text', showCancelButton: true });
@@ -210,13 +243,11 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
     }
   };
 
-  // 🔥 BARU: FUNGSI HAPUS KATEGORI
   const deleteCategoryModal = () => {
     if (categories.length === 0) return Swal.fire('Info', 'Tidak ada kategori untuk dihapus.', 'info');
 
     let listHtml = '<div class="flex flex-col gap-2 max-h-60 overflow-y-auto mt-2 text-left">';
     categories.forEach(cat => {
-        // Karena SweetAlert menggunakan string HTML murni, kita panggil fungsi global sementara
         window.executeDeleteCat = async (uid, name) => {
             const res = await Swal.fire({
                 title: 'Yakin hapus?', text: `Kategori "${name}"?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33'
@@ -240,7 +271,6 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
 
     Swal.fire({ title: 'Hapus Kategori', html: listHtml, showConfirmButton: false, showCloseButton: true });
   };
-
 
   // === FILTER & SORTING ARRAY ===
   const toggleSort = () => {
@@ -298,11 +328,9 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
         <div className="bg-white p-4 rounded-xl shadow mb-4">
           <h3 className="font-bold text-gray-700 mb-3 text-sm">Tambah / Edit Menu</h3>
           
-          {/* TAB KATEGORI ADMIN */}
           <div className="flex gap-2 items-center w-full mb-3">
             <div className="flex gap-1 border-r border-gray-300 pr-2 flex-none">
               <button onClick={addCategoryPrompt} className="px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-600 border border-green-200 hover:bg-green-200 active:scale-95" title="Tambah Kategori"><i className="fas fa-plus"></i></button>
-              {/* 🔥 Tombol Hapus Kategori Diaktifkan */}
               <button onClick={deleteCategoryModal} className="px-3 py-1.5 rounded-full text-xs font-bold bg-red-100 text-red-600 border border-red-200 hover:bg-red-200 active:scale-95" title="Hapus Kategori"><i className="fas fa-times"></i></button>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1 flex-1 hide-scrollbar">
@@ -368,7 +396,6 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
                 <button onClick={() => toggleFavorite(item)} className={`text-xl ${item.favorite ? 'text-red-500' : 'text-gray-300'} active:scale-90 transition`}>
                   {item.favorite ? '❤️' : '♡'}
                 </button>
-                {/* 🔥 Tombol Edit Diaktifkan */}
                 <button onClick={() => handleEditMenu(item)} className="text-blue-500 px-3 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition active:scale-95">
                   <i className="fas fa-edit"></i>
                 </button>
