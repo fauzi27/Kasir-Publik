@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
-import { collection, getDocs, doc, updateDoc, query, where, getCountFromServer } from 'firebase/firestore'; // 🔥 TAMBAHAN query, where, getCount
+import { collection, getDocs, doc, updateDoc, query, where, getCountFromServer } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import Swal from 'sweetalert2';
 
@@ -10,7 +10,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // === AMBIL SEMUA DATA KLIEN & HITUNG KUOTA REAL-TIME ===
+  // === AMBIL SEMUA DATA & KELOMPOKKAN DETAIL KARYAWAN ===
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
@@ -19,44 +19,40 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
       let staffMap = {}; 
       let staffCount = 0;
 
-      // 1. Kelompokkan data Bos dan Karyawan
+      // 1. Kelompokkan data Bos dan pisahkan data Karyawan
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         if (data.ownerId) {
           staffCount++;
-          staffMap[data.ownerId] = (staffMap[data.ownerId] || 0) + 1;
+          // Simpan seluruh data karyawan ke dalam array milik bosnya
+          if (!staffMap[data.ownerId]) staffMap[data.ownerId] = [];
+          staffMap[data.ownerId].push({ id: doc.id, ...data });
         } else {
           ownerList.push({ id: doc.id, ...data });
         }
       });
 
-      // 🔥 2. HITUNG PENGGUNAAN KUOTA BULAN INI UNTUK TIAP BOS
+      // 2. Hitung penggunaan kuota bulan ini (Khusus Transaksi)
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
 
-      // Kita gunakan Promise.all agar pencarian data serentak dan cepat
       const enrichedOwnerList = await Promise.all(ownerList.map(async (owner) => {
         let currentUsage = 0;
         
-        // Hanya hitung jika dia bukan UNLIMITED (maxTransactions > 0) untuk hemat bandwidth
         if (owner.maxTransactions > 0) {
           try {
-            const q = query(
-              collection(db, "users", owner.id, "transactions"),
-              where("timestamp", ">=", startOfMonth.getTime())
-            );
+            const q = query(collection(db, "users", owner.id, "transactions"), where("timestamp", ">=", startOfMonth.getTime()));
             const snap = await getCountFromServer(q);
             currentUsage = snap.data().count;
-          } catch (err) {
-            console.error("Gagal hitung kuota untuk", owner.name, err);
-          }
+          } catch (err) { console.error("Gagal hitung kuota", err); }
         }
 
         return {
           ...owner,
-          staffCount: staffMap[owner.id] || 0,
-          currentUsage: currentUsage // <--- Simpan hasil hitungan ke data Bos
+          staffList: staffMap[owner.id] || [], // Array detail kasir
+          staffCount: (staffMap[owner.id] || []).length,
+          currentUsage: currentUsage
         };
       }));
 
@@ -66,8 +62,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
       setOwners(enrichedOwnerList);
       setTotalStaff(staffCount);
     } catch (error) {
-      console.error("Gagal menarik data:", error);
-      Swal.fire('Error', 'Gagal memuat data klien. Pastikan Firebase Rules sudah diatur.', 'error');
+      Swal.fire('Error', 'Gagal memuat data klien: ' + error.message, 'error');
     }
     setIsLoading(false);
   };
@@ -76,80 +71,126 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
     fetchAllData();
   }, []);
 
-  // === FUNGSI SUSPEND KLIEN ===
-  const handleToggleSuspend = async (owner) => {
-    const isCurrentlySuspended = owner.isSuspended || false;
-    const actionText = isCurrentlySuspended ? 'Aktifkan Kembali' : 'Blokir (Suspend)';
-    const confirmColor = isCurrentlySuspended ? '#10b981' : '#ef4444';
+  // === 🔥 FUNGSI MELIHAT DETAIL KARYAWAN ===
+  const handleViewStaff = (owner) => {
+    if (!owner.staffList || owner.staffList.length === 0) {
+      return Swal.fire({ icon: 'info', title: 'Belum Ada Kasir', text: 'Toko ini belum menambahkan karyawan.', confirmButtonColor: '#3b82f6' });
+    }
+
+    let htmlContent = '<div class="text-left space-y-3 mt-4">';
+    owner.staffList.forEach((staff) => {
+      htmlContent += `
+        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-sm">
+          <p class="font-bold text-white text-sm">${staff.name || 'Tanpa Nama'}</p>
+          <p class="text-slate-400 text-xs mt-1"><i class="fas fa-envelope text-blue-400"></i> ${staff.email}</p>
+          <p class="text-slate-500 text-[10px] mt-1.5 font-mono bg-slate-900 px-2 py-1 rounded inline-block">ID: ${staff.id}</p>
+        </div>
+      `;
+    });
+    htmlContent += '</div>';
 
     Swal.fire({
-      title: `${actionText} Toko Ini?`,
+      title: `<span class="text-lg">Karyawan: ${owner.shopName || owner.name}</span>`,
+      html: htmlContent,
+      background: '#0f172a', // slate-900
+      color: '#f8fafc',
+      showCloseButton: true,
+      confirmButtonText: 'Tutup',
+      confirmButtonColor: '#3b82f6'
+    });
+  };
+
+  // === FUNGSI SUSPEND KLIEN ===
+  const handleToggleSuspend = async (owner) => {
+    const isSuspended = owner.isSuspended || false;
+    const actionText = isSuspended ? 'Aktifkan Kembali' : 'Blokir (Suspend)';
+    
+    Swal.fire({
+      title: `${actionText}?`,
       text: `Toko: ${owner.shopName || owner.name}`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: confirmColor,
+      confirmButtonColor: isSuspended ? '#10b981' : '#ef4444',
       cancelButtonColor: '#374151',
       confirmButtonText: `Ya, ${actionText}`
     }).then(async (result) => {
       if (result.isConfirmed) {
         try {
-          await updateDoc(doc(db, "users", owner.id), { isSuspended: !isCurrentlySuspended });
+          await updateDoc(doc(db, "users", owner.id), { isSuspended: !isSuspended });
           Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Status Diperbarui', timer: 1500, showConfirmButton: false });
           fetchAllData(); 
-        } catch (error) {
-          Swal.fire('Error', 'Gagal mengupdate status: ' + error.message, 'error');
-        }
+        } catch (error) { Swal.fire('Error', error.message, 'error'); }
       }
     });
   };
 
-  // === FUNGSI EDIT LIMIT TRANSAKSI ===
+  // === 🔥 FUNGSI MULTI-LIMIT (Transaksi, Menu, Foto) ===
   const handleEditLimit = async (owner) => {
-    const currentLimit = owner.maxTransactions || 0; 
-
-    const { value: newLimit } = await Swal.fire({
-      title: 'Atur Kuota Transaksi',
-      html: `Masukkan batas maksimal nota per bulan untuk <b>${owner.shopName || owner.name}</b>.<br><span class="text-xs text-gray-400">(Isi 0 untuk UNLIMITED)</span>`,
-      input: 'number',
-      inputValue: currentLimit,
+    const { value: formValues } = await Swal.fire({
+      title: 'Atur Multi-Limit SaaS',
+      html: `
+        <div class="text-left mb-4 mt-2">
+          <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Maks. Transaksi / Bulan</label>
+          <input id="swal-limit-tx" type="number" class="w-full p-2.5 bg-slate-800 border border-slate-600 text-white rounded-lg mt-1 text-sm outline-none focus:border-blue-500" value="${owner.maxTransactions || 0}">
+        </div>
+        <div class="text-left mb-4">
+          <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Maks. Menu Tersimpan</label>
+          <input id="swal-limit-menu" type="number" class="w-full p-2.5 bg-slate-800 border border-slate-600 text-white rounded-lg mt-1 text-sm outline-none focus:border-blue-500" value="${owner.maxMenus || 0}">
+        </div>
+        <div class="text-left mb-2">
+          <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Maks. Upload Foto</label>
+          <input id="swal-limit-photo" type="number" class="w-full p-2.5 bg-slate-800 border border-slate-600 text-white rounded-lg mt-1 text-sm outline-none focus:border-blue-500" value="${owner.maxImages || 0}">
+        </div>
+        <p class="text-[10px] text-slate-500 text-left mt-2"><i class="fas fa-info-circle"></i> Isi angka <b>0</b> untuk memberikan akses Unlimited.</p>
+      `,
+      background: '#0f172a',
+      color: '#fff',
+      focusConfirm: false,
       showCancelButton: true,
       confirmButtonColor: '#3b82f6',
       cancelButtonColor: '#374151',
-      confirmButtonText: 'Simpan Limit',
-      inputValidator: (value) => {
-        if (value < 0) return 'Limit tidak boleh kurang dari 0!';
+      confirmButtonText: 'Simpan Aturan',
+      preConfirm: () => {
+        return {
+          maxTransactions: parseInt(document.getElementById('swal-limit-tx').value) || 0,
+          maxMenus: parseInt(document.getElementById('swal-limit-menu').value) || 0,
+          maxImages: parseInt(document.getElementById('swal-limit-photo').value) || 0
+        }
       }
     });
 
-    if (newLimit !== undefined) {
+    if (formValues) {
+      Swal.fire({ title: 'Menyimpan...', didOpen: () => Swal.showLoading() });
       try {
-        await updateDoc(doc(db, "users", owner.id), { maxTransactions: parseInt(newLimit) });
+        await updateDoc(doc(db, "users", owner.id), {
+          maxTransactions: formValues.maxTransactions,
+          maxMenus: formValues.maxMenus,
+          maxImages: formValues.maxImages
+        });
         Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Limit Disimpan', timer: 1500, showConfirmButton: false });
         fetchAllData();
-      } catch (error) {
-        Swal.fire('Error', 'Gagal menyimpan limit: ' + error.message, 'error');
-      }
+      } catch (error) { Swal.fire('Error', error.message, 'error'); }
     }
   };
 
   // === FUNGSI LOGOUT ===
   const handleLogout = () => {
     Swal.fire({
-      title: 'Tutup Command Center?',
+      title: 'Keluar dari ISZI?',
       icon: 'question',
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
       confirmButtonText: 'Ya, Logout'
     }).then((result) => {
-      if (result.isConfirmed) { signOut(auth); }
+      if (result.isConfirmed) signOut(auth);
     });
   };
 
+  // MESIN PENCARIAN
   const filteredOwners = owners.filter(owner => {
-    const searchLower = searchTerm.toLowerCase();
-    const shopName = (owner.shopName || owner.name || '').toLowerCase();
-    const email = (owner.email || '').toLowerCase();
-    return shopName.includes(searchLower) || email.includes(searchLower);
+    const search = searchTerm.toLowerCase();
+    return (owner.shopName || owner.name || '').toLowerCase().includes(search) || 
+           (owner.email || '').toLowerCase().includes(search);
   });
 
   const activeCount = owners.filter(o => !o.isSuspended).length;
@@ -166,7 +207,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
           </div>
           <div>
             <h1 className="text-xl font-extrabold text-white tracking-tight">ISZI <span className="text-blue-500">Command Center</span></h1>
-            <p className="text-[11px] text-slate-400 font-mono">Super Admin Access: {currentUser?.email}</p>
+            <p className="text-[11px] text-slate-400 font-mono">God Mode: {currentUser?.email}</p>
           </div>
         </div>
         <button onClick={handleLogout} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 border border-slate-700">
@@ -176,7 +217,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
 
       <div className="flex-1 overflow-y-auto p-6">
         
-        {/* 4 KARTU METRIK UTAMA */}
+        {/* KARTU METRIK */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden">
             <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-bl-full flex items-start justify-end p-3"><i className="fas fa-store text-blue-500 text-lg"></i></div>
@@ -198,7 +239,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
           </div>
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm flex items-center justify-between">
             <div>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Status Server</p>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Server Status</p>
               <div className="flex items-center gap-2 mt-2">
                 <span className="relative flex h-4 w-4"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500"></span></span>
                 <span className="text-emerald-400 font-bold text-sm tracking-widest">ONLINE</span>
@@ -208,7 +249,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
           </div>
         </div>
 
-        {/* TABEL DAFTAR KLIEN & PENCARIAN */}
+        {/* TABEL DIREKTORI */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col">
           <div className="px-6 py-5 border-b border-slate-800 flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-slate-900/50">
             <h3 className="font-bold text-white text-lg flex items-center gap-2">
@@ -217,7 +258,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
             <div className="flex items-center gap-2">
               <div className="relative">
                 <i className="fas fa-search absolute left-3 top-2.5 text-slate-500 text-sm"></i>
-                <input type="text" placeholder="Cari toko atau email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-blue-500 w-full md:w-64 transition-colors" />
+                <input type="text" placeholder="Cari nama atau email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-blue-500 w-full md:w-64 transition-colors" />
               </div>
               <button onClick={fetchAllData} className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition border border-slate-700" title="Refresh Data">
                 <i className={`fas fa-sync-alt ${isLoading ? 'fa-spin' : ''}`}></i>
@@ -229,71 +270,72 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-950/50 text-slate-400 text-xs uppercase tracking-wider">
-                  <th className="p-4 font-semibold border-b border-slate-800">Nama Toko & Karyawan</th>
+                  <th className="p-4 font-semibold border-b border-slate-800">Profil Usaha</th>
                   <th className="p-4 font-semibold border-b border-slate-800">Email Utama</th>
-                  <th className="p-4 font-semibold border-b border-slate-800">Status & Kuota</th>
+                  <th className="p-4 font-semibold border-b border-slate-800">Status & Pemakaian Limit</th>
                   <th className="p-4 font-semibold border-b border-slate-800 text-center">Aksi (God Mode)</th>
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-slate-800/50">
                 {isLoading ? (
-                  <tr><td colSpan="4" className="p-8 text-center text-slate-500"><i className="fas fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block"></i> Memuat data klien...</td></tr>
+                  <tr><td colSpan="4" className="p-8 text-center text-slate-500"><i className="fas fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block"></i> Memuat direktori...</td></tr>
                 ) : filteredOwners.length === 0 ? (
-                  <tr><td colSpan="4" className="p-8 text-center text-slate-500 font-mono">{searchTerm ? 'Pencarian tidak ditemukan.' : 'Belum ada klien yang terdaftar.'}</td></tr>
+                  <tr><td colSpan="4" className="p-8 text-center text-slate-500 font-mono">Belum ada klien yang terdaftar.</td></tr>
                 ) : (
-                  filteredOwners.map((owner) => {
-                    // 🔥 LOGIKA VISUAL UNTUK KUOTA LIMIT
-                    const isLimitEnabled = owner.maxTransactions > 0;
-                    const isLimitReached = isLimitEnabled && owner.currentUsage >= owner.maxTransactions;
-                    const limitText = isLimitEnabled ? `Terpakai: ${owner.currentUsage} / ${owner.maxTransactions}` : 'UNLIMITED';
-                    
-                    // Warna badge berubah jadi merah kalau kuota habis
-                    const limitBadgeClass = isLimitReached 
-                      ? 'bg-red-900/40 text-red-400 border-red-800/50' 
-                      : 'bg-slate-950 text-slate-400 border-slate-800';
+                  filteredOwners.map((owner) => (
+                    <tr key={owner.id} className="hover:bg-slate-800/30 transition-colors">
+                      
+                      {/* KOLOM PROFIL & KARYAWAN (KLIKABLE) */}
+                      <td className="p-4">
+                        <p className="font-bold text-white text-base">{owner.shopName || owner.name}</p>
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5 cursor-pointer" onClick={() => handleViewStaff(owner)} title="Klik untuk lihat karyawan">
+                          <p className="text-[10px] text-slate-400 font-mono uppercase bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 hover:bg-slate-700 transition">ID: {owner.id.slice(0, 8)}</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-md border flex items-center gap-1 font-bold transition hover:opacity-80 ${owner.staffCount > 0 ? 'bg-purple-900/30 text-purple-400 border-purple-800/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                            <i className="fas fa-user-tie"></i> {owner.staffCount} Kasir
+                          </span>
+                        </div>
+                      </td>
 
-                    return (
-                      <tr key={owner.id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="p-4">
-                          <p className="font-bold text-white text-base">{owner.shopName || owner.name}</p>
-                          <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                            <p className="text-[10px] text-slate-400 font-mono uppercase">ID: {owner.id.slice(0, 8)}...</p>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-md border flex items-center gap-1 font-bold ${owner.staffCount > 0 ? 'bg-purple-900/30 text-purple-400 border-purple-800/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
-                              <i className="fas fa-user-tie"></i> {owner.staffCount} Kasir
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-4 text-slate-300">{owner.email}</td>
-                        <td className="p-4">
-                          <div className="flex flex-col items-start gap-1.5">
-                            {owner.isSuspended ? (
-                              <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase">🔴 Suspended</span>
-                            ) : (
-                              <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase">🟢 Active</span>
-                            )}
-                            
-                            {/* 🔥 BADGE KUOTA YANG SUDAH REAL-TIME */}
-                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md border ${limitBadgeClass}`}>
-                              {limitText}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-4 flex justify-center gap-2">
-                          {onImpersonate && (
-                            <button onClick={() => onImpersonate(owner.id)} className="w-9 h-9 rounded-xl bg-purple-900/30 text-purple-400 border border-purple-800/50 hover:bg-purple-800/50 hover:text-white flex items-center justify-center transition shadow-sm" title="Masuk sebagai Klien (Mata Dewa)">
-                              <i className="fas fa-user-secret"></i>
-                            </button>
+                      <td className="p-4 text-slate-300 font-mono text-xs">{owner.email}</td>
+                      
+                      {/* KOLOM LIMIT (3 BARIS) */}
+                      <td className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          {owner.isSuspended ? (
+                            <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-widest uppercase">🔴 Suspended</span>
+                          ) : (
+                            <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-widest uppercase">🟢 Active</span>
                           )}
-                          <button onClick={() => handleToggleSuspend(owner)} className={`w-9 h-9 rounded-xl flex items-center justify-center transition shadow-sm border ${owner.isSuspended ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50 hover:bg-emerald-800/50' : 'bg-red-900/30 text-red-400 border-red-800/50 hover:bg-red-800/50'}`} title={owner.isSuspended ? "Aktifkan Akun" : "Blokir Akun"}>
-                            <i className={`fas ${owner.isSuspended ? 'fa-play' : 'fa-ban'}`}></i>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          {/* Limit Transaksi (Merah jika penuh) */}
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-2 max-w-max ${(owner.maxTransactions > 0 && owner.currentUsage >= owner.maxTransactions) ? 'bg-red-900/40 text-red-400 border-red-800/50' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>
+                            <i className="fas fa-receipt w-3 text-center"></i> Nota: {owner.maxTransactions > 0 ? `${owner.currentUsage} / ${owner.maxTransactions}` : '∞ (Unlimited)'}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded border bg-slate-950 text-slate-400 border-slate-800 flex items-center gap-2 max-w-max">
+                            <i className="fas fa-hamburger w-3 text-center"></i> Menu: {owner.maxMenus > 0 ? `Max ${owner.maxMenus}` : '∞ (Unlimited)'}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded border bg-slate-950 text-slate-400 border-slate-800 flex items-center gap-2 max-w-max">
+                            <i className="fas fa-image w-3 text-center"></i> Foto: {owner.maxImages > 0 ? `Max ${owner.maxImages}` : '∞ (Unlimited)'}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="p-4 flex flex-wrap justify-center gap-2">
+                        {onImpersonate && (
+                          <button onClick={() => onImpersonate(owner.id)} className="w-9 h-9 rounded-xl bg-purple-900/30 text-purple-400 border border-purple-800/50 hover:bg-purple-800/50 hover:text-white flex items-center justify-center transition shadow-sm" title="Mata Dewa (Masuk Toko)">
+                            <i className="fas fa-user-secret"></i>
                           </button>
-                          <button onClick={() => handleEditLimit(owner)} className="w-9 h-9 rounded-xl bg-blue-900/30 text-blue-400 border border-blue-800/50 hover:bg-blue-800/50 hover:text-white flex items-center justify-center transition shadow-sm" title="Atur Kuota Transaksi">
-                            <i className="fas fa-sliders-h"></i>
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
+                        )}
+                        <button onClick={() => handleEditLimit(owner)} className="w-9 h-9 rounded-xl bg-blue-900/30 text-blue-400 border border-blue-800/50 hover:bg-blue-800/50 hover:text-white flex items-center justify-center transition shadow-sm" title="Atur Kuota Limit">
+                          <i className="fas fa-sliders-h"></i>
+                        </button>
+                        <button onClick={() => handleToggleSuspend(owner)} className={`w-9 h-9 rounded-xl flex items-center justify-center transition shadow-sm border ${owner.isSuspended ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50 hover:bg-emerald-800/50' : 'bg-red-900/30 text-red-400 border-red-800/50 hover:bg-red-800/50'}`} title={owner.isSuspended ? "Aktifkan Akun" : "Blokir Akun"}>
+                          <i className={`fas ${owner.isSuspended ? 'fa-play' : 'fa-ban'}`}></i>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
