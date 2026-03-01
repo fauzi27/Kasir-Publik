@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'; // <-- TAMBAHAN IMPORT REACT
+import { useState, useEffect } from 'react';
 import { auth, db } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { collection, getDocs } from 'firebase/firestore';
@@ -109,18 +109,6 @@ export default function Lobby({ businessData, onNavigate }) {
     <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center w-full">
       <div className="w-full max-w-3xl mx-auto flex flex-col items-center">
         
-        {/* 🔥 INDIKATOR ONLINE / OFFLINE 🔥 */}
-        <div className="mb-4 flex justify-center w-full transition-all duration-300">
-          <div className={`px-3 py-1.5 rounded-full text-[10px] font-extrabold flex items-center gap-2 shadow-sm border uppercase tracking-wider ${
-            isOnline 
-              ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-900/30 dark:border-green-800' 
-              : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800 animate-pulse'
-          }`}>
-            <span className={`w-2.5 h-2.5 rounded-full shadow-inner ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
-            {isOnline ? 'Sistem Online' : 'Sistem Offline'}
-          </div>
-        </div>
-
         {/* HEADER LOBI */}
         <div className="mb-6 flex-none">
           <h1 
@@ -215,14 +203,31 @@ export default function Lobby({ businessData, onNavigate }) {
           )}
 
         </div>
-        
-        <p className="mt-8 text-xs text-gray-500 dark:text-gray-400 flex-none">ISZI v2.01 React (For more fitur contact us 081559557553)</p>
 
-        <div className="flex gap-2 justify-center mt-2">
+        {/* 🔥 INDIKATOR ONLINE / OFFLINE DIPINDAH KE BAWAH 🔥 */}
+        <div className="mt-8 flex justify-center w-full transition-all duration-300">
+          <div className={`px-3 py-1.5 rounded-full text-[10px] font-extrabold flex items-center gap-2 shadow-sm border uppercase tracking-wider ${
+            isOnline 
+              ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-900/30 dark:border-green-800' 
+              : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800 animate-pulse'
+          }`}>
+            <span className={`w-2.5 h-2.5 rounded-full shadow-inner ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
+            {isOnline ? 'Sistem Online' : 'Sistem Offline'}
+          </div>
+        </div>
+        
+        {/* TEKS VERSI APLIKASI */}
+        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400 flex-none">
+          ISZI v2.01 React (For more fitur contact us 081559557553)
+        </p>
+
+        {/* TOMBOL ACTION BAWAH */}
+        <div className="flex gap-2 justify-center mt-3">
           <button onClick={handleDarkMode} className="text-xs bg-gray-700 hover:bg-gray-800 text-gray-200 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Dark Mode</button>
           {!isKasir && <button onClick={handleBackup} className="text-xs bg-green-700 hover:bg-green-800 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Backup CSV</button>}
           <button onClick={handleLogout} className="text-xs bg-red-700 hover:bg-red-800 text-gray-100 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Logout</button>
         </div>
+        
       </div>
     </div>
   );
