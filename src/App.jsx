@@ -15,6 +15,10 @@ import Settings from './pages/Settings';
 import Table from './pages/Table';
 import Calculator from './pages/Calculator';
 import Studio from './pages/Studio'; 
+import SuperAdmin from './pages/SuperAdmin'; // 🔥 IMPORT HALAMAN SUPER ADMIN
+
+// 🔥 EMAIL SAKTI UNTUK MASUK KE GOD MODE (Ganti dengan email aslimu)
+const SUPER_ADMIN_EMAIL = "fauzi27story@gmail.com"; 
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -22,15 +26,18 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState('lobby'); 
 
-  // === 🔥 CEK HAK AKSES (RBAC - ROLE BASED ACCESS CONTROL) ===
+  // === 🔥 CEK HAK AKSES (RBAC & SUPER ADMIN) ===
   const isOwner = businessData?.role !== 'kasir';
+  const isSuperAdmin = currentUser?.email === SUPER_ADMIN_EMAIL; // Deteksi akun CEO
   
   // Fungsi Satpam Pintar: Mengecek izin sebelum membuka halaman
   const hasAccess = (view) => {
-    if (view === 'lobby') return true; // Lobi selalu terbuka untuk semua
-    if (isOwner) return true; // Bos/Owner bebas akses ke mana saja
+    if (isSuperAdmin) return true; // Bos Besar bebas akses ke mana saja
+    if (view === 'superadmin' && !isSuperAdmin) return false; // Klien biasa dilarang ke panel Super Admin
     
-    // Jika Karyawan, cek apakah saklar fiturnya di-ON-kan oleh Bos
+    if (view === 'lobby') return true; 
+    if (isOwner) return true; 
+    
     return businessData?.accessRights?.[view] === true;
   };
 
@@ -45,7 +52,6 @@ function App() {
 
   // === 🔥 SISTEM NAVIGASI & KEAMANAN ROUTE ===
   const handleNavigate = (view) => {
-    // Mengecek akses pakai Satpam Pintar sebelum pindah halaman
     if (!hasAccess(view)) {
       Swal.fire('Akses Ditolak', 'Anda tidak memiliki izin untuk mengakses fitur ini.', 'error');
       return;
@@ -58,25 +64,39 @@ function App() {
   };
 
   useEffect(() => {
-    window.history.replaceState({ view: 'lobby' }, '', '#lobby');
+    // Jika Super Admin login, arahkan langsung ke superadmin (bypass lobby)
+    if (isSuperAdmin && currentView === 'lobby') {
+       window.history.replaceState({ view: 'superadmin' }, '', '#superadmin');
+       setCurrentView('superadmin');
+    } else if (!isSuperAdmin) {
+       window.history.replaceState({ view: 'lobby' }, '', '#lobby');
+    }
 
     const handlePopState = (event) => {
       if (Swal.isVisible()) Swal.close();
-      let nextView = event.state?.view || 'lobby';
+      let nextView = event.state?.view || (isSuperAdmin ? 'superadmin' : 'lobby');
       setCurrentView(nextView);
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [isSuperAdmin]); // Memicu ulang jika status Super Admin berubah (saat login)
 
   // === 🔥 AUTH LISTENER & LOGIKA DATA ===
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        let dataUsaha = {};
+        
+        // Pengecekan Khusus Super Admin
+        if (user.email === SUPER_ADMIN_EMAIL) {
+           setBusinessData({ role: 'superadmin', name: 'CEO ISZI', shopName: 'ISZI Command Center' });
+           setCurrentView('superadmin'); // Paksa masuk ke God Mode
+           setIsLoading(false);
+           return; 
+        }
 
+        let dataUsaha = {};
         try {
           if (navigator.onLine) {
             const docRef = doc(db, "users", user.uid);
@@ -85,22 +105,18 @@ function App() {
             if (docSnap.exists()) {
               dataUsaha = docSnap.data();
               
-              // 1. Ambil NAMA ASLI KASIR/BOS untuk dicetak di struk (fallback ke awalan email jika kosong)
               const fallbackName = user.displayName || user.email?.split('@')[0] || 'Admin';
               dataUsaha.operatorName = dataUsaha.name || fallbackName;
 
-              // 2. Jika dia KASIR, bajak data tampilan Lobi agar menggunakan identitas BOS
               if (dataUsaha.role === 'kasir' && dataUsaha.ownerId) {
                 const ownerSnap = await getDoc(doc(db, "users", dataUsaha.ownerId));
                 if (ownerSnap.exists()) {
                   const ownerData = ownerSnap.data();
-                  // Timpa data toko absolut dengan milik Bos
                   dataUsaha.shopName = ownerData.shopName || ownerData.name || "ISZI POS";
                   dataUsaha.shopAddress = ownerData.shopAddress || ownerData.address || "Nusadua Bali";
                   if (ownerData.themeData) dataUsaha.themeData = ownerData.themeData; 
                 }
               } else {
-                // Jika dia BOS, pastikan shopName absolut juga ada
                 dataUsaha.shopName = dataUsaha.shopName || dataUsaha.name || "ISZI POS";
                 dataUsaha.shopAddress = dataUsaha.shopAddress || dataUsaha.address || "Nusadua Bali";
               }
@@ -137,14 +153,13 @@ function App() {
     );
   }
 
-  // Jika mencoba masuk ke halaman (via link langsung) tapi tidak punya akses
   if (currentUser && !hasAccess(currentView)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white p-6 text-center transition-colors duration-300">
         <i className="fas fa-shield-alt text-6xl text-red-500 mb-4"></i>
         <h2 className="text-2xl font-bold mb-2">Area Terlarang</h2>
         <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Anda tidak memiliki izin dari Owner untuk mengakses halaman ini.</p>
-        <button onClick={() => handleNavigate('lobby')} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition active:scale-95 shadow-lg">
+        <button onClick={() => handleNavigate(isSuperAdmin ? 'superadmin' : 'lobby')} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition active:scale-95 shadow-lg">
           Kembali ke Lobi
         </button>
       </div>
@@ -165,6 +180,9 @@ function App() {
           {currentView === 'settings' && <Settings businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
           {currentView === 'table' && <Table businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
           {currentView === 'studio' && <Studio businessData={businessData} currentUser={currentUser} onNavigate={handleNavigate} />}
+          
+          {/* 🔥 HALAMAN RAHASIA SUPER ADMIN 🔥 */}
+          {currentView === 'superadmin' && <SuperAdmin currentUser={currentUser} />}
         </>
       ) : (
         <Auth />
