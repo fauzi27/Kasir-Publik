@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../firebase';
 import { signOut } from 'firebase/auth';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, onSnapshot } from 'firebase/firestore'; // [DITAMBAH: doc, onSnapshot]
 import Swal from 'sweetalert2';
 
 export default function Lobby({ businessData, onNavigate }) {
   // === STATE STATUS INTERNET ===
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // === [FITUR BARU]: STATE UNTUK BROADCAST ===
+  const [broadcast, setBroadcast] = useState(null);
 
   // === DETEKSI ROLE & HAK AKSES (GRANULAR RBAC) ===
   const isOwner = businessData?.role !== 'kasir';
@@ -47,6 +50,22 @@ export default function Lobby({ businessData, onNavigate }) {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  // === [FITUR BARU]: ANTENA PENERIMA BROADCAST (REAL-TIME) ===
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "system", "broadcast"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.active) {
+          setBroadcast(data);
+        } else {
+          setBroadcast(null);
+        }
+      }
+    });
+
+    return () => unsub(); 
   }, []);
 
   // === FUNGSI LOGOUT ===
@@ -112,11 +131,27 @@ export default function Lobby({ businessData, onNavigate }) {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center w-full">
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center w-full relative">
+      
+      {/* === [FITUR BARU]: BANNER BROADCAST PENGUMUMAN === */}
+      {broadcast && (
+        <div className="absolute top-0 left-0 w-full bg-blue-600 text-white p-3 shadow-lg z-50 flex items-center justify-center gap-3 animate-fade-in-down">
+          <i className="fas fa-bullhorn text-xl animate-pulse"></i>
+          <div className="text-left">
+            <p className="text-xs font-bold text-blue-200 uppercase tracking-wider">Pengumuman Sistem</p>
+            <p className="text-sm font-semibold">{broadcast.message}</p>
+          </div>
+          <button onClick={() => setBroadcast(null)} className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-200 hover:text-white">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+      )}
+
       <div className="w-full max-w-3xl mx-auto flex flex-col items-center">
         
         {/* HEADER LOBI */}
-        <div className="mb-6 flex-none">
+        <div className={`mb-6 flex-none ${broadcast ? 'mt-16' : ''} transition-all`}>
+          <img src="/asset/logokasir.png" alt="Logo" className="w-20 h-20 object-contain mx-auto mb-3 rounded-full shadow-sm bg-white p-1" />
           <h1 
             className={`text-3xl font-extrabold mb-1 ${themeTitle.customHex ? '' : themeTitle.color}`}
             style={themeTitle.customHex ? { color: themeTitle.customHex } : {}}
