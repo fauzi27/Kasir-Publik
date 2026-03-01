@@ -34,7 +34,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
   const shopOwnerId = businessData?.ownerId || currentUser?.uid;
   const isKasir = businessData?.role === 'kasir';
 
-  // === AMBIL DATA TRANSAKSI ===
+  // === AMBIL DATA TRANSAKSI (DENGAN INDIKATOR OFFLINE) ===
   useEffect(() => {
     if (!shopOwnerId) return;
 
@@ -91,11 +91,12 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     return matchTime && matchDebt && matchSearch;
   });
 
-  // === MENGHITUNG 4 METRIK UTAMA V1 ===
+  // === MENGHITUNG 5 METRIK UTAMA V1 ===
   let totalPenjualan = 0;
   let totalTunai = 0;
   let totalQRIS = 0;
   let totalHutang = 0;
+  let totalTransaksi = filteredData.length;
 
   filteredData.forEach(t => {
     totalPenjualan += (t.total || 0);
@@ -109,7 +110,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     }
   });
 
-  // === FUNGSI EXPORT NATIVE PDF (Print to PDF) ===
+  // === FUNGSI EXPORT NATIVE PDF ===
   const handleExportPDF = () => {
     if (filteredData.length === 0) return Swal.fire('Kosong', 'Tidak ada data untuk diekspor', 'info');
 
@@ -181,6 +182,25 @@ export default function Report({ businessData, currentUser, onNavigate }) {
     printWindow.document.close();
   };
 
+  // === FUNGSI EXPORT EXCEL (CSV) ===
+  const handleExportExcel = () => {
+    if (filteredData.length === 0) return Swal.fire('Kosong', 'Tidak ada data untuk diekspor', 'info');
+
+    let csvContent = "Tanggal,Pelanggan,Metode,Total Belanja,Dibayar,Sisa Hutang\n";
+    filteredData.forEach(t => {
+      const tgl = t.date ? t.date.replace(/,/g, '') : new Date(t.timestamp).toLocaleString('id-ID').replace(/,/g, '');
+      csvContent += `${tgl},${t.buyer || 'Umum'},${t.method || '-'},${t.total || 0},${t.paid || 0},${t.remaining || 0}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `Laporan_ISZI_${filterDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // === FUNGSI AKSI TRANSAKSI ===
   const openTransactionDetail = (tx) => {
     setSelectedTransaction(tx);
@@ -227,42 +247,68 @@ export default function Report({ businessData, currentUser, onNavigate }) {
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 transition-colors duration-300">
       
-      {/* HEADER */}
+      {/* HEADER: KEMBALI KE LOBI & 2 TOMBOL BULAT EXPORT */}
       <div className="bg-white dark:bg-gray-800 shadow-sm z-10 flex-none px-4 py-3 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 transition-colors">
         <div className="flex items-center gap-3">
           <button onClick={() => onNavigate('lobby')} className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white active:scale-90 transition p-1">
             <i className="fas fa-arrow-left text-lg"></i>
           </button>
-          <h2 className="font-bold text-gray-700 dark:text-gray-200 text-base">Laporan Penjualan</h2>
+          <h2 className="font-bold text-gray-800 dark:text-gray-100 text-base">Dashboard Analitik</h2>
         </div>
         
-        {/* TOMBOL EXPORT PDF */}
         {!isKasir && (
-          <button onClick={handleExportPDF} className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 active:scale-95 border border-red-200 dark:border-red-800 transition">
-            <i className="fas fa-file-pdf text-sm"></i> <span className="hidden sm:inline">Export PDF</span>
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleExportPDF} className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center hover:bg-purple-700 active:scale-90 transition shadow-sm">
+              <i className="fas fa-file-pdf text-xs"></i>
+            </button>
+            <button onClick={handleExportExcel} className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center hover:bg-purple-700 active:scale-90 transition shadow-sm">
+              <i className="fas fa-file-excel text-xs"></i>
+            </button>
+          </div>
         )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
         
-        {/* KARTU 4 METRIK V1 */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-white dark:bg-gray-800 border border-blue-100 dark:border-gray-700 rounded-2xl p-3 shadow-sm flex flex-col justify-center border-l-4 border-l-blue-500">
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase mb-0.5">Total Penjualan</p>
-            <h3 className="text-sm md:text-base font-extrabold text-blue-600 dark:text-blue-400">Rp {totalPenjualan.toLocaleString('id-ID')}</h3>
-          </div>
-          <div className="bg-white dark:bg-gray-800 border border-green-100 dark:border-gray-700 rounded-2xl p-3 shadow-sm flex flex-col justify-center border-l-4 border-l-green-500">
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase mb-0.5">Tunai</p>
-            <h3 className="text-sm md:text-base font-extrabold text-green-600 dark:text-green-400">Rp {totalTunai.toLocaleString('id-ID')}</h3>
-          </div>
-          <div className="bg-white dark:bg-gray-800 border border-indigo-100 dark:border-gray-700 rounded-2xl p-3 shadow-sm flex flex-col justify-center border-l-4 border-l-indigo-500">
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase mb-0.5">QRIS</p>
-            <h3 className="text-sm md:text-base font-extrabold text-indigo-600 dark:text-indigo-400">Rp {totalQRIS.toLocaleString('id-ID')}</h3>
-          </div>
-          <div className="bg-white dark:bg-gray-800 border border-red-100 dark:border-gray-700 rounded-2xl p-3 shadow-sm flex flex-col justify-center border-l-4 border-l-red-500">
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase mb-0.5">Piutang</p>
-            <h3 className="text-sm md:text-base font-extrabold text-red-600 dark:text-red-400">Rp {totalHutang.toLocaleString('id-ID')}</h3>
+        {/* KARTU METRIK UTAMA (SINGLE CARD SEPERTI V1) */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 mb-4 relative overflow-hidden transition-colors">
+          {/* Ornamen bulat transparan di pojok kanan atas */}
+          <div className="absolute -top-6 -right-6 w-24 h-24 bg-purple-50 dark:bg-purple-900/20 rounded-full"></div>
+          
+          <div className="relative z-10">
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider mb-1">
+              Omzet Kotor {filterMode === 'daily' ? 'Hari Ini' : filterMode === 'weekly' ? 'Minggu Ini' : 'Bulan Ini'}
+            </p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-gray-800 dark:text-gray-100 mb-5 tracking-tight">
+              Rp {totalPenjualan.toLocaleString('id-ID')}
+            </h2>
+
+            <div className="grid grid-cols-2 gap-y-4 gap-x-2 border-t border-gray-100 dark:border-gray-700 pt-4">
+              <div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mb-1 flex items-center gap-1.5">
+                  <i className="fas fa-money-bill-wave text-green-500"></i> Masuk Tunai
+                </p>
+                <p className="text-sm font-extrabold text-gray-800 dark:text-gray-100">Rp {totalTunai.toLocaleString('id-ID')}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mb-1 flex items-center gap-1.5">
+                  <i className="fas fa-qrcode text-blue-500"></i> Masuk QRIS
+                </p>
+                <p className="text-sm font-extrabold text-gray-800 dark:text-gray-100">Rp {totalQRIS.toLocaleString('id-ID')}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mb-1 flex items-center gap-1.5">
+                  <i className="fas fa-book-open text-red-500"></i> Sisa Hutang
+                </p>
+                <p className="text-sm font-extrabold text-red-600 dark:text-red-400">Rp {totalHutang.toLocaleString('id-ID')}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mb-1 flex items-center gap-1.5">
+                  <i className="fas fa-receipt text-purple-500"></i> Jml Transaksi
+                </p>
+                <p className="text-sm font-extrabold text-gray-800 dark:text-gray-100">{totalTransaksi} Nota</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -312,7 +358,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
           </div>
         </div>
 
-        {/* DAFTAR TRANSAKSI (Dengan Lampu) */}
+        {/* DAFTAR TRANSAKSI */}
         {isLoading ? (
           <div className="flex justify-center items-center h-32">
             <i className="fas fa-circle-notch fa-spin text-3xl text-blue-500"></i>
@@ -324,7 +370,7 @@ export default function Report({ businessData, currentUser, onNavigate }) {
           </div>
         ) : (
           <div className="space-y-3 pb-6">
-            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-2 pl-1">Total {filteredData.length} transaksi</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-2 pl-1">Rincian Transaksi</p>
             
             {filteredData.map(t => {
               const hasHutang = (t.remaining || 0) > 0;
