@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, writeBatch, setDoc, deleteDoc } from 'firebase/firestore'; // 🔥 TAMBAHAN setDoc & deleteDoc
+import { collection, onSnapshot, doc, writeBatch, setDoc, deleteDoc, getCountFromServer, query, where } from 'firebase/firestore'; // 🔥 TAMBAHAN getCountFromServer, query, where
 import Swal from 'sweetalert2';
 import ReceiptModal from '../components/ReceiptModal';
 
@@ -9,10 +9,10 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
   const [menus, setMenus] = useState([]);
   const [categories, setCategories] = useState([]);
   
-  // === 🔥 STATE BILL GANTUNG (ACTIVE ORDERS) 🔥 ===
+  // === STATE BILL GANTUNG (ACTIVE ORDERS) ===
   const [activeOrders, setActiveOrders] = useState([]);
   const [isHoldListOpen, setIsHoldListOpen] = useState(false);
-  const [currentHoldId, setCurrentHoldId] = useState(null); // Menyimpan ID Bill jika sedang memanggil meja
+  const [currentHoldId, setCurrentHoldId] = useState(null); 
 
   // === STATE UI & KERANJANG ===
   const [cart, setCart] = useState(() => {
@@ -34,7 +34,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
 
   // === STATE MODAL STRUK ===
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('payment'); // 'payment' atau 'view'
+  const [modalMode, setModalMode] = useState('payment'); 
   const [currentTransaction, setCurrentTransaction] = useState(null);
 
   const shopOwnerId = businessData?.ownerId || currentUser?.uid;
@@ -51,7 +51,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       setMenus(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 🔥 Listener untuk Bill Gantung (Sistem Radar Sinkronisasi)
     const unsubOrders = onSnapshot(collection(db, "users", shopOwnerId, "active_orders"), (snapshot) => {
       setActiveOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -118,7 +117,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         if (result.isConfirmed) {
           setCart([]);
           setBuyerName('');
-          setCurrentHoldId(null); // 🔥 Reset status meja
+          setCurrentHoldId(null); 
         }
       });
     }
@@ -126,7 +125,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
-  // === 🔥 FUNGSI TAHAN BILL (HOLD CART) 🔥 ===
+  // === FUNGSI TAHAN BILL (HOLD CART) ===
   const handleHoldCart = async () => {
     if (cart.length === 0) return Swal.fire('Kosong', 'Pilih menu terlebih dahulu', 'warning');
     
@@ -146,7 +145,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
 
     Swal.fire({ title: 'Menyimpan...', didOpen: () => Swal.showLoading() });
     try {
-      // Jika pesanan ini panggil ulang dari Meja 4, timpa data Meja 4. Jika baru, buat ID baru.
       const holdRef = currentHoldId ? doc(db, "users", shopOwnerId, "active_orders", currentHoldId) : doc(collection(db, "users", shopOwnerId, "active_orders"));
       
       await setDoc(holdRef, {
@@ -166,7 +164,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     }
   };
 
-  // Panggil ulang bill yang digantung
   const resumeOrder = (order) => {
     if (cart.length > 0) {
       Swal.fire({
@@ -191,7 +188,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     }
   };
 
-  // Hapus bill gantung tanpa dibayar (batal pesanan)
   const deleteHoldOrder = (id, e) => {
     e.stopPropagation();
     Swal.fire({
@@ -206,10 +202,47 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     });
   };
 
-  // === LOGIKA PEMBAYARAN (CHECKOUT) ===
-  const handleCheckoutClick = () => {
+  // === 🔥 LOGIKA PEMBAYARAN (DENGAN CEK ARGO LIMIT) 🔥 ===
+  const handleCheckoutClick = async () => {
     if (cart.length === 0) return Swal.fire('Kosong', 'Pilih menu terlebih dahulu', 'warning');
     
+    // 1. CEK KUOTA (SISTEM ARGO METERAN)
+    const limit = businessData?.maxTransactions || 0;
+    
+    if (limit > 0) {
+      Swal.fire({ title: 'Cek Kuota...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      try {
+        // Ambil tanggal 1 di bulan ini jam 00:00:00
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        // Minta database menghitung jumlah nota bulan ini
+        const q = query(
+          collection(db, "users", shopOwnerId, "transactions"),
+          where("timestamp", ">=", startOfMonth.getTime())
+        );
+        const snapshot = await getCountFromServer(q);
+        const currentUsage = snapshot.data().count;
+
+        Swal.close();
+
+        // Blokir jika argo meteran sudah melebihi atau sama dengan limit
+        if (currentUsage >= limit) {
+          return Swal.fire({
+            icon: 'error',
+            title: 'Kuota Habis!',
+            html: `Toko ini telah mencapai batas <b>${limit} transaksi</b> bulan ini.<br><br>Silakan hubungi Admin ISZI untuk menambah kuota layanan.`,
+            confirmButtonColor: '#d33'
+          });
+        }
+      } catch (error) {
+        Swal.fire('Error', 'Gagal mengecek kuota server: ' + error.message, 'error');
+        return;
+      }
+    }
+
+    // 2. LANJUTKAN KE PEMBAYARAN JIKA AMAN
     const tempTx = {
       items: cart,
       total: cartTotal,
@@ -279,6 +312,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         paid: paidAmount,
         change: changeAmount,
         remaining: remainingAmount,
+        status: 'SUCCESS', // 🔥 Tambahan Penanda Sukses
         id: txRef.id 
       };
 
@@ -295,7 +329,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         }
       });
       
-      // 🔥 Jika ini adalah pesanan dari "Bill Gantung", hapus dari antrian meja
       if (currentHoldId) {
         const holdRef = doc(db, "users", shopOwnerId, "active_orders", currentHoldId);
         batch.delete(holdRef);
@@ -310,7 +343,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
       setModalMode('view');
       setCart([]);
       setBuyerName('');
-      setCurrentHoldId(null); // Reset ID
+      setCurrentHoldId(null); 
 
     } catch (error) {
       Swal.fire('Error', 'Gagal memproses pembayaran: ' + error.message, 'error');
@@ -338,7 +371,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
             <h2 className="font-bold text-gray-700 dark:text-gray-200 text-sm md:text-base">Mulai Jualan</h2>
           </div>
           
-          {/* 🔥 TOMBOL KANAN ATAS (BILL GANTUNG & KALKULATOR) */}
           <div className="flex items-center gap-2">
             <button onClick={() => setIsHoldListOpen(true)} className="relative text-orange-600 dark:text-orange-400 text-xs font-bold border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1 shadow-sm">
               <i className="fas fa-clock"></i> <span className="hidden md:inline">Gantung</span>
@@ -356,30 +388,15 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         
         {/* TAB KATEGORI */}
         <div className="flex gap-2 p-2 overflow-x-auto whitespace-nowrap bg-gray-100 dark:bg-gray-900 hide-scrollbar border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
-          <button 
-            onClick={() => setActiveCategory('all')} 
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}
-          >
-            Semua
-          </button>
+          <button onClick={() => setActiveCategory('all')} className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}>Semua</button>
           {categories.map(cat => (
-            <button 
-              key={cat.uid}
-              onClick={() => setActiveCategory(cat.name.toLowerCase())} 
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === cat.name.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}
-            >
+            <button key={cat.uid} onClick={() => setActiveCategory(cat.name.toLowerCase())} className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === cat.name.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}>
               {cat.name}
             </button>
           ))}
         </div>
         <div className="p-2 bg-white dark:bg-gray-800 transition-colors duration-300">
-          <input 
-            type="text" 
-            placeholder="Cari nama menu..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full p-2.5 rounded-lg text-sm outline-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition"
-          />
+          <input type="text" placeholder="Cari nama menu..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-2.5 rounded-lg text-sm outline-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-white placeholder-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition" />
         </div>
       </div>
 
@@ -393,11 +410,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         ) : (
           <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
             {filteredMenus.map(item => (
-              <div 
-                key={item.id} 
-                onClick={() => addToCart(item)}
-                className={`p-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white'} dark:!bg-gray-800`}
-              >
+              <div key={item.id} onClick={() => addToCart(item)} className={`p-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white'} dark:!bg-gray-800`}>
                 {item.image ? (
                   <img src={item.image.replace('/upload/', '/upload/w_150,h_150,c_fill,q_auto,f_auto/')} alt={item.name} className="w-14 h-14 object-cover rounded-full shadow-sm mb-2 flex-none border-2 border-white dark:border-gray-700" />
                 ) : (
@@ -420,20 +433,14 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         )}
       </div>
 
-      {/* AREA KERANJANG (CART) BAWAH */}
+      {/* AREA KERANJANG BAWAH */}
       <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20 flex-none h-[40%] flex flex-col w-full transition-colors duration-300">
         <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center gap-2 flex-none rounded-t-3xl transition-colors duration-300">
           <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 flex items-center justify-center flex-none">
             <i className="fas fa-user"></i>
           </div>
-          <input 
-            type="text" 
-            placeholder="Nama Pelanggan (Opsional)..." 
-            value={buyerName}
-            onChange={e => setBuyerName(e.target.value)}
-            className="flex-1 bg-transparent outline-none text-sm font-bold text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 h-8" 
-          />
-          <button onClick={clearCart} className="text-xs text-red-500 dark:text-red-400 font-bold px-3 py-1.5 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-100 dark:border-red-800/30 active:scale-95 transition flex items-center gap-1">
+          <input type="text" placeholder="Nama Pelanggan (Opsional)..." value={buyerName} onChange={e => setBuyerName(e.target.value)} className="flex-1 bg-transparent outline-none text-sm font-bold text-gray-700 dark:text-gray-200 placeholder-gray-400 h-8" />
+          <button onClick={clearCart} className="text-xs text-red-500 dark:text-red-400 font-bold px-3 py-1.5 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 border border-red-100 active:scale-95 transition flex items-center gap-1">
             <i className="fas fa-trash-alt"></i> <span className="hidden sm:inline">Reset</span>
           </button>
         </div>
@@ -454,9 +461,9 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
                 <div className="flex items-center gap-3">
                   <span className="font-bold text-sm text-gray-800 dark:text-gray-100 w-20 text-right">Rp {(item.price * item.qty).toLocaleString('id-ID')}</span>
                   <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-0.5 transition-colors">
-                    <button onClick={() => updateQty(item.id, -1)} className="w-8 h-8 text-gray-600 dark:text-gray-300 hover:text-red-500 dark:hover:text-red-400 hover:bg-white dark:hover:bg-gray-600 rounded-md text-sm font-bold transition shadow-sm">-</button>
+                    <button onClick={() => updateQty(item.id, -1)} className="w-8 h-8 text-gray-600 dark:text-gray-300 hover:text-red-500 rounded-md text-sm font-bold transition shadow-sm">-</button>
                     <span className="w-6 text-center text-xs font-bold text-gray-700 dark:text-gray-200">{item.qty}</span>
-                    <button onClick={() => updateQty(item.id, 1)} className="w-8 h-8 text-gray-600 dark:text-gray-300 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-gray-600 rounded-md text-sm font-bold transition shadow-sm">+</button>
+                    <button onClick={() => updateQty(item.id, 1)} className="w-8 h-8 text-gray-600 dark:text-gray-300 hover:text-blue-500 rounded-md text-sm font-bold transition shadow-sm">+</button>
                   </div>
                 </div>
               </div>
@@ -470,19 +477,11 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
             <p className="text-2xl font-extrabold text-yellow-400 tracking-tight">Rp {cartTotal.toLocaleString('id-ID')}</p>
           </div>
           
-          {/* 🔥 DUA TOMBOL (SIMPAN & BAYAR) 🔥 */}
           <div className="flex gap-2 w-1/2 md:w-auto">
-            <button 
-              onClick={handleHoldCart}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(249,115,22,0.4)] transition transform active:scale-95 flex items-center justify-center"
-              title="Simpan Meja"
-            >
+            <button onClick={handleHoldCart} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(249,115,22,0.4)] transition transform active:scale-95 flex items-center justify-center" title="Simpan Meja">
               <i className="fas fa-save"></i>
             </button>
-            <button 
-              onClick={handleCheckoutClick}
-              className="flex-1 md:px-8 bg-green-500 hover:bg-green-600 text-white py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(34,197,94,0.4)] transition transform active:scale-95 flex items-center justify-center gap-2 text-base"
-            >
+            <button onClick={handleCheckoutClick} className="flex-1 md:px-8 bg-green-500 hover:bg-green-600 text-white py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(34,197,94,0.4)] transition transform active:scale-95 flex items-center justify-center gap-2 text-base">
               Bayar <i className="fas fa-chevron-right text-xs"></i>
             </button>
           </div>
@@ -498,40 +497,29 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         onProcessPayment={processPayment}
       />
       
-      {/* 🔥 MODAL DAFTAR BILL GANTUNG 🔥 */}
+      {/* MODAL DAFTAR BILL GANTUNG */}
       {isHoldListOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm transition-opacity">
           <div className="bg-white dark:bg-gray-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up sm:animate-zoom-in flex flex-col max-h-[85vh]">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
-              <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                <i className="fas fa-clock text-orange-500"></i> Daftar Meja / Antrian
-              </h3>
-              <button onClick={() => setIsHoldListOpen(false)} className="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 active:scale-90 transition">
-                <i className="fas fa-times"></i>
-              </button>
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><i className="fas fa-clock text-orange-500"></i> Daftar Meja / Antrian</h3>
+              <button onClick={() => setIsHoldListOpen(false)} className="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-gray-700 text-gray-600 rounded-full hover:bg-gray-300 transition"><i className="fas fa-times"></i></button>
             </div>
             
             <div className="p-3 overflow-y-auto flex-1 bg-gray-50/50 dark:bg-gray-900/50">
               {activeOrders.length === 0 ? (
-                 <div className="text-center py-10 text-gray-400 dark:text-gray-500">
-                   <i className="fas fa-receipt text-4xl mb-3 opacity-50"></i>
-                   <p className="text-sm">Tidak ada meja yang ditahan.</p>
-                 </div>
+                 <div className="text-center py-10 text-gray-400"><i className="fas fa-receipt text-4xl mb-3 opacity-50"></i><p className="text-sm">Tidak ada meja yang ditahan.</p></div>
               ) : (
                 <div className="space-y-2">
                   {activeOrders.map(order => (
-                    <div key={order.id} onClick={() => resumeOrder(order)} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex justify-between items-center cursor-pointer hover:border-orange-400 dark:hover:border-orange-500 active:scale-95 transition group">
+                    <div key={order.id} onClick={() => resumeOrder(order)} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex justify-between items-center cursor-pointer hover:border-orange-400 transition group">
                       <div>
                         <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{order.buyer}</p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
-                          <i className="fas fa-utensils"></i> {order.items.reduce((sum, i) => sum + i.qty, 0)} Item | Oleh: {order.operatorName}
-                        </p>
+                        <p className="text-[10px] text-gray-500 mt-0.5"><i className="fas fa-utensils"></i> {order.items.reduce((sum, i) => sum + i.qty, 0)} Item | Oleh: {order.operatorName}</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <p className="font-extrabold text-orange-600 dark:text-orange-400 text-sm">Rp {order.total.toLocaleString('id-ID')}</p>
-                        <button onClick={(e) => deleteHoldOrder(order.id, e)} className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/30 text-red-500 hover:bg-red-500 hover:text-white transition shadow-sm flex items-center justify-center">
-                          <i className="fas fa-trash-alt text-xs"></i>
-                        </button>
+                        <p className="font-extrabold text-orange-600 text-sm">Rp {order.total.toLocaleString('id-ID')}</p>
+                        <button onClick={(e) => deleteHoldOrder(order.id, e)} className="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition shadow-sm flex items-center justify-center"><i className="fas fa-trash-alt text-xs"></i></button>
                       </div>
                     </div>
                   ))}
