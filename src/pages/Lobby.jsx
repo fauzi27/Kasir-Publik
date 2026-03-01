@@ -1,9 +1,13 @@
+import { useState, useEffect } from 'react'; // <-- TAMBAHAN IMPORT REACT
 import { auth, db } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { collection, getDocs } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
 export default function Lobby({ businessData, onNavigate }) {
+  // === STATE STATUS INTERNET ===
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
   // === DETEKSI ROLE & OWNER ===
   const isKasir = businessData?.role === 'kasir';
   const shopOwnerId = businessData?.ownerId || auth.currentUser?.uid;
@@ -15,7 +19,6 @@ export default function Lobby({ businessData, onNavigate }) {
     return themeData[id] || { color: defaultColor, text: defaultText, icon: defaultIcon, customHex: '' };
   };
 
-  // themeBg dihapus agar background transparan dan mengikuti App.jsx (mendukung Dark Mode)
   const themeTitle = getTheme('lobby_title', 'text-yellow-400', '', '');
   
   const cashierTheme = getTheme('btn_cashier', 'bg-blue-600', 'Mulai Jualan', 'fa-cash-register');
@@ -25,6 +28,20 @@ export default function Lobby({ businessData, onNavigate }) {
   const calcTheme = getTheme('btn_calc', 'bg-teal-600', 'Manual', 'fa-calculator');
   const adminTheme = getTheme('btn_admin', 'bg-orange-600', 'Kelola Menu', 'fa-utensils');
   const settingTheme = getTheme('btn_setting', 'bg-gray-600', 'Setting', 'fa-cog');
+
+  // === EFEK PELACAK JARINGAN (ONLINE/OFFLINE) ===
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // === FUNGSI LOGOUT ===
   const handleLogout = () => {
@@ -89,10 +106,21 @@ export default function Lobby({ businessData, onNavigate }) {
   };
 
   return (
-    // 🔥 PERBAIKAN: Background transparan di sini agar warna App.jsx bisa terlihat
     <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center w-full">
       <div className="w-full max-w-3xl mx-auto flex flex-col items-center">
         
+        {/* 🔥 INDIKATOR ONLINE / OFFLINE 🔥 */}
+        <div className="mb-4 flex justify-center w-full transition-all duration-300">
+          <div className={`px-3 py-1.5 rounded-full text-[10px] font-extrabold flex items-center gap-2 shadow-sm border uppercase tracking-wider ${
+            isOnline 
+              ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-900/30 dark:border-green-800' 
+              : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800 animate-pulse'
+          }`}>
+            <span className={`w-2.5 h-2.5 rounded-full shadow-inner ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
+            {isOnline ? 'Sistem Online' : 'Sistem Offline'}
+          </div>
+        </div>
+
         {/* HEADER LOBI */}
         <div className="mb-6 flex-none">
           <h1 
