@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth'; // 🔥 TAMBAH signOut
-import { doc, getDoc } from 'firebase/firestore'; 
+import { onAuthStateChanged, signOut } from 'firebase/auth'; 
+import { doc, getDoc, onSnapshot } from 'firebase/firestore'; // 🔥 TAMBAH onSnapshot
 import Swal from 'sweetalert2'; 
 
 // === IMPORT SEMUA HALAMAN ===
@@ -18,7 +18,7 @@ import Studio from './pages/Studio';
 import SuperAdmin from './pages/SuperAdmin'; 
 
 // 🔥 EMAIL SAKTI UNTUK MASUK KE GOD MODE
-const SUPER_ADMIN_EMAIL = "fauzi27story@gmail.com"; 
+const SUPER_ADMIN_EMAIL = "bosku@iszi.com"; 
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -26,8 +26,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState('lobby'); 
 
-  // === 🔥 CEK HAK AKSES (RBAC & SUPER ADMIN) ===
-  const isOwner = businessData?.role !== 'kasir';
+  // === 🔥 CEK HAK AKSES ===
+  // Jika role-nya bukan 'kasir' dan bukan 'ghost' (akun dihapus), berarti dia Bos
+  const isOwner = businessData?.role !== 'kasir' && businessData?.role !== 'ghost';
   const isSuperAdmin = currentUser?.email === SUPER_ADMIN_EMAIL; 
   
   const hasAccess = (view) => {
@@ -49,13 +50,12 @@ function App() {
     }
   }, []);
 
-  // === 🔥 SISTEM NAVIGASI & KEAMANAN ROUTE ===
+  // === 🔥 SISTEM NAVIGASI ===
   const handleNavigate = (view) => {
     if (!hasAccess(view)) {
       Swal.fire('Akses Ditolak', 'Anda tidak memiliki izin untuk mengakses fitur ini.', 'error');
       return;
     }
-
     if (currentView !== view) {
       window.history.pushState({ view: view }, '', '#' + view);
       setCurrentView(view);
@@ -80,70 +80,72 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isSuperAdmin]); 
 
-  // === 🔥 AUTH LISTENER & LOGIKA DATA ===
+  // === 🔥 AUTH LISTENER UTAMA ===
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setCurrentUser(user);
-        
-        if (user.email === SUPER_ADMIN_EMAIL) {
-           setBusinessData({ role: 'superadmin', name: 'CEO ISZI', shopName: 'ISZI Command Center' });
-           setCurrentView('superadmin'); 
-           setIsLoading(false);
-           return; 
-        }
-
-        let dataUsaha = {};
-        try {
-          if (navigator.onLine) {
-            const docRef = doc(db, "users", user.uid);
-            const docSnap = await getDoc(docRef);
-            
-            if (docSnap.exists()) {
-              dataUsaha = docSnap.data();
-              
-              const fallbackName = user.displayName || user.email?.split('@')[0] || 'Admin';
-              dataUsaha.operatorName = dataUsaha.name || fallbackName;
-
-              // 🔥 LOGIKA KASIR (Pewarisan Data Bos)
-              if (dataUsaha.role === 'kasir' && dataUsaha.ownerId) {
-                const ownerSnap = await getDoc(doc(db, "users", dataUsaha.ownerId));
-                if (ownerSnap.exists()) {
-                  const ownerData = ownerSnap.data();
-                  dataUsaha.shopName = ownerData.shopName || ownerData.name || "ISZI POS";
-                  dataUsaha.shopAddress = ownerData.shopAddress || ownerData.address || "Nusadua Bali";
-                  if (ownerData.themeData) dataUsaha.themeData = ownerData.themeData; 
-                  // 🔥 WARISKAN STATUS BLOKIR DARI BOS KE KASIRNYA
-                  dataUsaha.isSuspended = ownerData.isSuspended; 
-                }
-              } else {
-                dataUsaha.shopName = dataUsaha.shopName || dataUsaha.name || "ISZI POS";
-                dataUsaha.shopAddress = dataUsaha.shopAddress || dataUsaha.address || "Nusadua Bali";
-              }
-
-              localStorage.setItem('cached_user_profile', JSON.stringify(dataUsaha));
-            }
-          } else {
-            const cached = localStorage.getItem('cached_user_profile');
-            if (cached) dataUsaha = JSON.parse(cached);
-          }
-        } catch (e) {
-          const cached = localStorage.getItem('cached_user_profile');
-          if (cached) dataUsaha = JSON.parse(cached);
-        }
-
-        setBusinessData(dataUsaha);
-      } else {
-        setCurrentUser(null);
-        setBusinessData(null);
-        setCurrentView('lobby'); 
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      if (!user) {
+         setBusinessData(null);
+         setCurrentView('lobby'); 
+         setIsLoading(false);
       }
-      setIsLoading(false);
     });
-
-    return () => unsubscribe(); 
+    return () => unsubscribeAuth(); 
   }, []);
 
+  // === 🔥 RADAR REAL-TIME (MENCEGAH AKUN HANTU) ===
+  useEffect(() => {
+    if (!currentUser) return;
+
+    if (currentUser.email === SUPER_ADMIN_EMAIL) {
+       setBusinessData({ role: 'superadmin', name: 'CEO ISZI', shopName: 'ISZI Command Center' });
+       setCurrentView('superadmin'); 
+       setIsLoading(false);
+       return; 
+    }
+
+    // Menggunakan onSnapshot agar terus memantau database secara Live!
+    const unsubDoc = onSnapshot(doc(db, "users", currentUser.uid), async (docSnap) => {
+      if (docSnap.exists()) {
+        let dataUsaha = docSnap.data();
+        
+        const fallbackName = currentUser.displayName || currentUser.email?.split('@')[0] || 'Admin';
+        dataUsaha.operatorName = dataUsaha.name || fallbackName;
+
+        if (dataUsaha.role === 'kasir' && dataUsaha.ownerId) {
+          const ownerSnap = await getDoc(doc(db, "users", dataUsaha.ownerId));
+          if (ownerSnap.exists()) {
+            const ownerData = ownerSnap.data();
+            dataUsaha.shopName = ownerData.shopName || ownerData.name || "ISZI POS";
+            dataUsaha.shopAddress = ownerData.shopAddress || ownerData.address || "Nusadua Bali";
+            if (ownerData.themeData) dataUsaha.themeData = ownerData.themeData; 
+            dataUsaha.isSuspended = ownerData.isSuspended; 
+          }
+        } else {
+          dataUsaha.shopName = dataUsaha.shopName || dataUsaha.name || "ISZI POS";
+          dataUsaha.shopAddress = dataUsaha.shopAddress || dataUsaha.address || "Nusadua Bali";
+        }
+
+        localStorage.setItem('cached_user_profile', JSON.stringify(dataUsaha));
+        setBusinessData(dataUsaha);
+      } else {
+        // 🔥 JIKA DOKUMEN TIDAK DITEMUKAN (DIHAPUS BOS), JADIKAN AKUN HANTU!
+        setBusinessData({ role: 'ghost' });
+      }
+      setIsLoading(false);
+    }, (error) => {
+       console.warn("Membaca dari cache offline:", error);
+       const cached = localStorage.getItem('cached_user_profile');
+       if (cached) {
+          setBusinessData(JSON.parse(cached));
+       }
+       setIsLoading(false);
+    });
+
+    return () => unsubDoc();
+  }, [currentUser]);
+
+  // === RENDER LOADING ===
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white transition-colors duration-300">
@@ -153,7 +155,28 @@ function App() {
     );
   }
 
-  // === 🔥 TEMBOK RATAPAN (SUSPEND SCREEN) 🔥 ===
+  // === 🔥 LAYAR BLOKIR UNTUK AKUN DIHAPUS (GHOST) 🔥 ===
+  if (businessData?.role === 'ghost') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white p-6 text-center transition-colors duration-300">
+        <div className="bg-red-50 dark:bg-red-900/20 p-6 rounded-full mb-6 border-4 border-red-100 dark:border-red-900/50 shadow-inner">
+          <i className="fas fa-user-slash text-6xl text-red-600 dark:text-red-500"></i>
+        </div>
+        <h2 className="text-3xl font-black mb-3 text-red-600 dark:text-red-400">Akun Tidak Ditemukan</h2>
+        <p className="text-gray-600 dark:text-gray-400 text-sm mb-8 max-w-sm leading-relaxed">
+          Akun karyawan ini telah dihapus oleh Pemilik Toko atau tidak lagi terdaftar dalam sistem.
+        </p>
+        <button 
+          onClick={() => signOut(auth)} 
+          className="bg-gray-800 dark:bg-gray-700 hover:bg-gray-900 dark:hover:bg-gray-600 text-white px-8 py-3.5 rounded-xl font-bold transition active:scale-95 shadow-lg flex items-center gap-2"
+        >
+          <i className="fas fa-sign-out-alt"></i> Keluar
+        </button>
+      </div>
+    );
+  }
+
+  // === LAYAR SUSPEND (Masa Langganan Habis) ===
   if (businessData?.isSuspended && !isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white p-6 text-center transition-colors duration-300">
@@ -174,6 +197,7 @@ function App() {
     );
   }
 
+  // === LAYAR AREA TERLARANG ===
   if (currentUser && !hasAccess(currentView)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white p-6 text-center transition-colors duration-300">
@@ -187,6 +211,7 @@ function App() {
     );
   }
 
+  // === TAMPILAN APLIKASI UTAMA ===
   return (
     <div className="App min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 font-sans overflow-x-hidden transition-colors duration-300">
       {currentUser ? (
