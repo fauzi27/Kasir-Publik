@@ -188,7 +188,7 @@ export default function Lobby({ businessData, onNavigate }) {
 
         </div>
         
-        <p className="mt-8 text-xs text-gray-500 dark:text-gray-400 flex-none">ISZI v2.0 React (For more fitur contact us 081559557553)</p>
+        <p className="mt-8 text-xs text-gray-500 dark:text-gray-400 flex-none">ISZI v2.01 React (For more fitur contact us 081559557553)</p>
 
         <div className="flex gap-2 justify-center mt-2">
           <button onClick={handleDarkMode} className="text-xs bg-gray-700 hover:bg-gray-800 text-gray-200 px-3 py-1.5 rounded font-semibold active:scale-95 transition shadow-sm">Dark Mode</button>
