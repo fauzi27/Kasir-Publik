@@ -1,4 +1,4 @@
-const CACHE_NAME = 'iszi-react-v2.0'; 
+const CACHE_NAME = 'iszi-react-v2.01'; 
 
 // Hanya simpan file inti yang pasti ada di folder public/
 const STATIC_ASSETS = [
