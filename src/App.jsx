@@ -28,9 +28,8 @@ function App() {
 
   // === 🔥 MESIN DARK MODE GLOBAL ===
   useEffect(() => {
-    // Saat aplikasi dibuka, cek apakah sebelumnya kasir mengaktifkan Dark Mode
     if (localStorage.getItem('darkMode') === 'true') {
-      document.documentElement.classList.add('dark'); // Pasang di tag <html>
+      document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
@@ -62,7 +61,7 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // === AUTH LISTENER ===
+  // === 🔥 AUTH LISTENER & LOGIKA DATA (DIPERBAIKI) ===
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -76,15 +75,27 @@ function App() {
             
             if (docSnap.exists()) {
               dataUsaha = docSnap.data();
+              
+              // 1. Ambil NAMA ASLI KASIR/BOS untuk dicetak di struk (fallback ke awalan email jika kosong)
+              const fallbackName = user.displayName || user.email?.split('@')[0] || 'Admin';
+              dataUsaha.operatorName = dataUsaha.name || fallbackName;
+
+              // 2. Jika dia KASIR, bajak data tampilan Lobi agar menggunakan identitas BOS
               if (dataUsaha.role === 'kasir' && dataUsaha.ownerId) {
                 const ownerSnap = await getDoc(doc(db, "users", dataUsaha.ownerId));
                 if (ownerSnap.exists()) {
                   const ownerData = ownerSnap.data();
-                  dataUsaha.shopName = ownerData.name;
-                  dataUsaha.shopAddress = ownerData.address;
-                  if(ownerData.themeData) dataUsaha.themeData = ownerData.themeData; 
+                  // Timpa data toko absolut dengan milik Bos
+                  dataUsaha.shopName = ownerData.shopName || ownerData.name || "ISZI POS";
+                  dataUsaha.shopAddress = ownerData.shopAddress || ownerData.address || "Nusadua Bali";
+                  if (ownerData.themeData) dataUsaha.themeData = ownerData.themeData; 
                 }
+              } else {
+                // Jika dia BOS, pastikan shopName absolut juga ada
+                dataUsaha.shopName = dataUsaha.shopName || dataUsaha.name || "ISZI POS";
+                dataUsaha.shopAddress = dataUsaha.shopAddress || dataUsaha.address || "Nusadua Bali";
               }
+
               localStorage.setItem('cached_user_profile', JSON.stringify(dataUsaha));
             }
           } else {
@@ -130,7 +141,6 @@ function App() {
     );
   }
 
-  // === 🔥 RENDER UTAMA DENGAN DUKUNGAN DARK MODE TAIWIND ===
   return (
     <div className="App min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 font-sans overflow-x-hidden transition-colors duration-300">
       {currentUser ? (
