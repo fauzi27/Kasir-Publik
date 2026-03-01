@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, writeBatch, setDoc, deleteDoc, getCountFromServer, query, where } from 'firebase/firestore'; // 🔥 TAMBAHAN getCountFromServer, query, where
+import { collection, onSnapshot, doc, writeBatch, setDoc, deleteDoc, getCountFromServer, query, where } from 'firebase/firestore'; 
 import Swal from 'sweetalert2';
 import ReceiptModal from '../components/ReceiptModal';
 
@@ -212,12 +212,10 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     if (limit > 0) {
       Swal.fire({ title: 'Cek Kuota...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
       try {
-        // Ambil tanggal 1 di bulan ini jam 00:00:00
         const startOfMonth = new Date();
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
 
-        // Minta database menghitung jumlah nota bulan ini
         const q = query(
           collection(db, "users", shopOwnerId, "transactions"),
           where("timestamp", ">=", startOfMonth.getTime())
@@ -227,7 +225,6 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
 
         Swal.close();
 
-        // Blokir jika argo meteran sudah melebihi atau sama dengan limit
         if (currentUsage >= limit) {
           return Swal.fire({
             icon: 'error',
@@ -312,7 +309,7 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
         paid: paidAmount,
         change: changeAmount,
         remaining: remainingAmount,
-        status: 'SUCCESS', // 🔥 Tambahan Penanda Sukses
+        status: 'SUCCESS',
         id: txRef.id 
       };
 
@@ -357,94 +354,108 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
     return matchSearch && matchCat;
   });
 
-  // === RENDER TAMPILAN ===
+  // === RENDER TAMPILAN (UPGRADED: RESPONSIVE SPLIT-SCREEN) ===
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 relative transition-colors duration-300">
+    // 🔥 PERUBAHAN UTAMA: Wrapper diubah menjadi 'md:flex-row' untuk layar belah di Tablet/PC
+    <div className="flex flex-col md:flex-row h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 relative transition-colors duration-300 overflow-hidden">
       
-      {/* HEADER KASIR */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm z-10 flex-none w-full border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-          <button onClick={() => onNavigate('lobby')} className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white active:scale-90 transition p-2">
-            <i className="fas fa-arrow-left text-lg"></i>
-          </button>
-          <div className="flex items-center gap-2">
-            <h2 className="font-bold text-gray-700 dark:text-gray-200 text-sm md:text-base">Mulai Jualan</h2>
+      {/* ========================================= */}
+      {/* BAGIAN KIRI: PANEL MENU (Lebar di Tablet) */}
+      {/* ========================================= */}
+      <div className="flex flex-col flex-1 min-w-0 h-[60%] md:h-full">
+        
+        {/* HEADER KASIR KIRI */}
+        <div className="bg-white dark:bg-gray-800 shadow-sm z-10 flex-none w-full border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+            <button onClick={() => onNavigate('lobby')} className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white active:scale-90 transition p-2">
+              <i className="fas fa-arrow-left text-lg"></i>
+            </button>
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-gray-700 dark:text-gray-200 text-sm md:text-base">Mulai Jualan</h2>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <button onClick={() => setIsHoldListOpen(true)} className="relative text-orange-600 dark:text-orange-400 text-xs font-bold border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1 shadow-sm">
+                <i className="fas fa-clock"></i> <span className="hidden md:inline">Gantung</span>
+                {activeOrders.length > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-bold shadow-md">
+                    {activeOrders.length}
+                  </span>
+                )}
+              </button>
+              <button onClick={() => onNavigate('calculator')} className="text-teal-600 dark:text-teal-400 text-xs font-bold border border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1 shadow-sm">
+                <i className="fas fa-calculator"></i> <span className="hidden md:inline">Manual</span>
+              </button>
+            </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            <button onClick={() => setIsHoldListOpen(true)} className="relative text-orange-600 dark:text-orange-400 text-xs font-bold border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1 shadow-sm">
-              <i className="fas fa-clock"></i> <span className="hidden md:inline">Gantung</span>
-              {activeOrders.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full font-bold shadow-md">
-                  {activeOrders.length}
-                </span>
-              )}
-            </button>
-            <button onClick={() => onNavigate('calculator')} className="text-teal-600 dark:text-teal-400 text-xs font-bold border border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-900/30 px-2 py-1.5 rounded active:scale-95 transition flex items-center gap-1 shadow-sm">
-              <i className="fas fa-calculator"></i> <span className="hidden md:inline">Manual</span>
-            </button>
-          </div>
-        </div>
-        
-        {/* TAB KATEGORI */}
-        <div className="flex gap-2 p-2 overflow-x-auto whitespace-nowrap bg-gray-100 dark:bg-gray-900 hide-scrollbar border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
-          <button onClick={() => setActiveCategory('all')} className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}>Semua</button>
-          {categories.map(cat => (
-            <button key={cat.uid} onClick={() => setActiveCategory(cat.name.toLowerCase())} className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === cat.name.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}>
-              {cat.name}
-            </button>
-          ))}
-        </div>
-        <div className="p-2 bg-white dark:bg-gray-800 transition-colors duration-300">
-          <input type="text" placeholder="Cari nama menu..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-2.5 rounded-lg text-sm outline-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-white placeholder-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition" />
-        </div>
-      </div>
-
-      {/* GRID MENU */}
-      <div className="flex-1 overflow-y-auto p-3 pb-10 bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-        {filteredMenus.length === 0 ? (
-          <div className="text-center mt-10 text-gray-400 dark:text-gray-500 flex flex-col items-center">
-            <i className="fas fa-search text-3xl mb-2 opacity-30"></i>
-            <p className="text-sm">Menu tidak ditemukan</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
-            {filteredMenus.map(item => (
-              <div key={item.id} onClick={() => addToCart(item)} className={`p-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white'} dark:!bg-gray-800`}>
-                {item.image ? (
-                  <img src={item.image.replace('/upload/', '/upload/w_150,h_150,c_fill,q_auto,f_auto/')} alt={item.name} className="w-14 h-14 object-cover rounded-full shadow-sm mb-2 flex-none border-2 border-white dark:border-gray-700" />
-                ) : (
-                  <div className="w-14 h-14 flex items-center justify-center mb-2 flex-none bg-gray-50 dark:bg-gray-700 rounded-full border-2 border-white dark:border-gray-600 shadow-sm transition-colors">
-                    <i className={`fas ${item.icon || 'fa-utensils'} text-2xl text-gray-400 dark:text-gray-500`}></i>
-                  </div>
-                )}
-                <div className="flex-1 flex flex-col justify-center w-full my-0.5 px-1">
-                  <h4 className="font-bold text-[11px] leading-tight text-gray-800 dark:text-gray-100 break-words line-clamp-2">{item.name}</h4>
-                </div>
-                <div className="w-full flex-none mt-auto pt-1.5 border-t border-gray-200/60 dark:border-gray-600/60 border-dashed">
-                  <p className="text-xs text-blue-700 dark:text-blue-400 font-extrabold">Rp {(item.price || 0).toLocaleString('id-ID')}</p>
-                  {item.stock !== undefined && (
-                    <span className={`text-[9px] block mt-0.5 font-semibold ${item.stock <= 5 ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>Sisa: {item.stock}</span>
-                  )}
-                </div>
-              </div>
+          {/* TAB KATEGORI */}
+          <div className="flex gap-2 p-2 overflow-x-auto whitespace-nowrap bg-gray-100 dark:bg-gray-900 hide-scrollbar border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
+            <button onClick={() => setActiveCategory('all')} className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}>Semua</button>
+            {categories.map(cat => (
+              <button key={cat.uid} onClick={() => setActiveCategory(cat.name.toLowerCase())} className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition shadow-sm ${activeCategory === cat.name.toLowerCase() ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'}`}>
+                {cat.name}
+              </button>
             ))}
           </div>
-        )}
+          <div className="p-2 bg-white dark:bg-gray-800 transition-colors duration-300">
+            <input type="text" placeholder="Cari nama menu..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-2.5 rounded-lg text-sm outline-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-white placeholder-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition" />
+          </div>
+        </div>
+
+        {/* GRID MENU KIRI */}
+        <div className="flex-1 overflow-y-auto p-3 pb-10 bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+          {filteredMenus.length === 0 ? (
+            <div className="text-center mt-10 text-gray-400 dark:text-gray-500 flex flex-col items-center">
+              <i className="fas fa-search text-3xl mb-2 opacity-30"></i>
+              <p className="text-sm">Menu tidak ditemukan</p>
+            </div>
+          ) : (
+            // 🔥 PERUBAHAN GRID: Menyesuaikan dengan sisa lebar layar yang ada di Tablet/PC
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+              {filteredMenus.map(item => (
+                <div key={item.id} onClick={() => addToCart(item)} className={`p-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-between cursor-pointer min-h-[140px] text-center transition hover:shadow-md active:scale-95 ${item.color || 'bg-white'} dark:!bg-gray-800`}>
+                  {item.image ? (
+                    <img src={item.image.replace('/upload/', '/upload/w_150,h_150,c_fill,q_auto,f_auto/')} alt={item.name} className="w-14 h-14 object-cover rounded-full shadow-sm mb-2 flex-none border-2 border-white dark:border-gray-700" />
+                  ) : (
+                    <div className="w-14 h-14 flex items-center justify-center mb-2 flex-none bg-gray-50 dark:bg-gray-700 rounded-full border-2 border-white dark:border-gray-600 shadow-sm transition-colors">
+                      <i className={`fas ${item.icon || 'fa-utensils'} text-2xl text-gray-400 dark:text-gray-500`}></i>
+                    </div>
+                  )}
+                  <div className="flex-1 flex flex-col justify-center w-full my-0.5 px-1">
+                    <h4 className="font-bold text-[11px] leading-tight text-gray-800 dark:text-gray-100 break-words line-clamp-2">{item.name}</h4>
+                  </div>
+                  <div className="w-full flex-none mt-auto pt-1.5 border-t border-gray-200/60 dark:border-gray-600/60 border-dashed">
+                    <p className="text-xs text-blue-700 dark:text-blue-400 font-extrabold">Rp {(item.price || 0).toLocaleString('id-ID')}</p>
+                    {item.stock !== undefined && (
+                      <span className={`text-[9px] block mt-0.5 font-semibold ${item.stock <= 5 ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>Sisa: {item.stock}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* AREA KERANJANG BAWAH */}
-      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20 flex-none h-[40%] flex flex-col w-full transition-colors duration-300">
-        <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center gap-2 flex-none rounded-t-3xl transition-colors duration-300">
+      {/* ======================================================= */}
+      {/* BAGIAN KANAN: PANEL KERANJANG (Menetap di Kanan Tablet) */}
+      {/* ======================================================= */}
+      {/* 🔥 PERUBAHAN KERANJANG: Tinggi 40% di HP, tapi Tinggi Penuh (h-full) & Lebar Tetap di Tablet/PC */}
+      <div className="flex-none flex flex-col w-full md:w-[340px] lg:w-[400px] h-[40%] md:h-full bg-white dark:bg-gray-800 border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 rounded-t-3xl md:rounded-none shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-[-5px_0_20px_rgba(0,0,0,0.05)] z-20 transition-all duration-300">
+        
+        {/* HEADER KERANJANG */}
+        <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center gap-2 flex-none rounded-t-3xl md:rounded-none transition-colors duration-300">
           <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 flex items-center justify-center flex-none">
             <i className="fas fa-user"></i>
           </div>
-          <input type="text" placeholder="Nama Pelanggan (Opsional)..." value={buyerName} onChange={e => setBuyerName(e.target.value)} className="flex-1 bg-transparent outline-none text-sm font-bold text-gray-700 dark:text-gray-200 placeholder-gray-400 h-8" />
-          <button onClick={clearCart} className="text-xs text-red-500 dark:text-red-400 font-bold px-3 py-1.5 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 border border-red-100 active:scale-95 transition flex items-center gap-1">
+          <input type="text" placeholder="Nama / Meja..." value={buyerName} onChange={e => setBuyerName(e.target.value)} className="flex-1 bg-transparent outline-none text-sm font-bold text-gray-700 dark:text-gray-200 placeholder-gray-400 h-8 min-w-0" />
+          <button onClick={clearCart} className="text-xs text-red-500 dark:text-red-400 font-bold px-3 py-1.5 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 border border-red-100 dark:border-red-900/30 active:scale-95 transition flex items-center gap-1 flex-none">
             <i className="fas fa-trash-alt"></i> <span className="hidden sm:inline">Reset</span>
           </button>
         </div>
         
+        {/* LIST ITEM KERANJANG */}
         <div className="flex-1 overflow-y-auto p-3 bg-gray-50/50 dark:bg-gray-900/50 transition-colors duration-300">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 opacity-60">
@@ -454,16 +465,16 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
           ) : (
             cart.map(item => (
               <div key={item.id} className="flex justify-between items-center mb-2 bg-white dark:bg-gray-700 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 transition-colors">
-                <div className="flex-1 pr-2">
+                <div className="flex-1 pr-2 min-w-0">
                   <div className="font-bold text-xs text-gray-800 dark:text-gray-100 truncate">{item.name}</div>
                   <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{item.qty} x {item.price.toLocaleString('id-ID')}</div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-bold text-sm text-gray-800 dark:text-gray-100 w-20 text-right">Rp {(item.price * item.qty).toLocaleString('id-ID')}</span>
+                <div className="flex flex-col items-end gap-1.5">
+                  <span className="font-bold text-sm text-gray-800 dark:text-gray-100 whitespace-nowrap">Rp {(item.price * item.qty).toLocaleString('id-ID')}</span>
                   <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-0.5 transition-colors">
-                    <button onClick={() => updateQty(item.id, -1)} className="w-8 h-8 text-gray-600 dark:text-gray-300 hover:text-red-500 rounded-md text-sm font-bold transition shadow-sm">-</button>
-                    <span className="w-6 text-center text-xs font-bold text-gray-700 dark:text-gray-200">{item.qty}</span>
-                    <button onClick={() => updateQty(item.id, 1)} className="w-8 h-8 text-gray-600 dark:text-gray-300 hover:text-blue-500 rounded-md text-sm font-bold transition shadow-sm">+</button>
+                    <button onClick={() => updateQty(item.id, -1)} className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-red-500 rounded-md text-sm font-bold transition shadow-sm">-</button>
+                    <span className="w-5 text-center text-xs font-bold text-gray-700 dark:text-gray-200">{item.qty}</span>
+                    <button onClick={() => updateQty(item.id, 1)} className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-blue-500 rounded-md text-sm font-bold transition shadow-sm">+</button>
                   </div>
                 </div>
               </div>
@@ -471,23 +482,28 @@ export default function Cashier({ businessData, currentUser, onNavigate }) {
           )}
         </div>
 
-        <div className="p-4 bg-gray-900 dark:bg-black text-white flex justify-between items-center flex-none pb-safe transition-colors duration-300"> 
-          <div>
+        {/* FOOTER CHECKOUT */}
+        <div className="p-4 bg-gray-900 dark:bg-black text-white flex flex-col md:flex-col lg:flex-row justify-between lg:items-center gap-3 flex-none pb-safe transition-colors duration-300"> 
+          {/* Tampilan Total Tagihan (Lebih Fleksibel) */}
+          <div className="flex justify-between md:justify-start lg:flex-col items-end md:items-start lg:items-start w-full lg:w-auto">
             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-0.5">Total Tagihan</p>
             <p className="text-2xl font-extrabold text-yellow-400 tracking-tight">Rp {cartTotal.toLocaleString('id-ID')}</p>
           </div>
           
-          <div className="flex gap-2 w-1/2 md:w-auto">
+          <div className="flex gap-2 w-full lg:w-auto lg:flex-1">
             <button onClick={handleHoldCart} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(249,115,22,0.4)] transition transform active:scale-95 flex items-center justify-center" title="Simpan Meja">
               <i className="fas fa-save"></i>
             </button>
-            <button onClick={handleCheckoutClick} className="flex-1 md:px-8 bg-green-500 hover:bg-green-600 text-white py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(34,197,94,0.4)] transition transform active:scale-95 flex items-center justify-center gap-2 text-base">
+            <button onClick={handleCheckoutClick} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3.5 rounded-xl font-bold shadow-[0_4px_15px_rgba(34,197,94,0.4)] transition transform active:scale-95 flex items-center justify-center gap-2 text-base">
               Bayar <i className="fas fa-chevron-right text-xs"></i>
             </button>
           </div>
         </div>
       </div>
 
+      {/* ======================= */}
+      {/* MODAL & OVERLAYS BAWAH  */}
+      {/* ======================= */}
       <ReceiptModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
