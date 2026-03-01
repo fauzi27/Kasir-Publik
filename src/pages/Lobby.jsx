@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../firebase';
 import { signOut } from 'firebase/auth';
-import { collection, getDocs, doc, onSnapshot } from 'firebase/firestore'; // [DITAMBAH: doc, onSnapshot]
+import { collection, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import Swal from 'sweetalert2';
 
 export default function Lobby({ businessData, onNavigate }) {
   // === STATE STATUS INTERNET ===
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // === [FITUR BARU]: STATE UNTUK BROADCAST ===
+  // === STATE UNTUK BROADCAST ===
   const [broadcast, setBroadcast] = useState(null);
 
   // === DETEKSI ROLE & HAK AKSES (GRANULAR RBAC) ===
@@ -52,13 +52,19 @@ export default function Lobby({ businessData, onNavigate }) {
     };
   }, []);
 
-  // === [FITUR BARU]: ANTENA PENERIMA BROADCAST (REAL-TIME) ===
+  // === ANTENA PENERIMA BROADCAST (ANTI-SPAM) ===
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "system", "broadcast"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.active) {
-          setBroadcast(data);
+          // CEK MEMORI: Apakah pengumuman INI sudah pernah ditutup?
+          const dismissedId = localStorage.getItem('dismissedBroadcast');
+          if (dismissedId !== String(data.timestamp)) {
+            setBroadcast(data); // Tampilkan jika belum pernah ditutup
+          } else {
+            setBroadcast(null); // Sembunyikan jika kasir sudah menutupnya
+          }
         } else {
           setBroadcast(null);
         }
@@ -133,16 +139,23 @@ export default function Lobby({ businessData, onNavigate }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center w-full relative">
       
-      {/* === [FITUR BARU]: BANNER BROADCAST PENGUMUMAN === */}
+      {/* === BANNER BROADCAST PENGUMUMAN === */}
       {broadcast && (
         <div className="absolute top-0 left-0 w-full bg-blue-600 text-white p-3 shadow-lg z-50 flex items-center justify-center gap-3 animate-fade-in-down">
           <i className="fas fa-bullhorn text-xl animate-pulse"></i>
-          <div className="text-left">
+          <div className="text-left pr-8">
             <p className="text-xs font-bold text-blue-200 uppercase tracking-wider">Pengumuman Sistem</p>
             <p className="text-sm font-semibold">{broadcast.message}</p>
           </div>
-          <button onClick={() => setBroadcast(null)} className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-200 hover:text-white">
-            <i className="fas fa-times"></i>
+          {/* TOMBOL SILANG DENGAN LOGIKA PENYIMPANAN LOKAL */}
+          <button 
+            onClick={() => {
+              setBroadcast(null);
+              localStorage.setItem('dismissedBroadcast', String(broadcast.timestamp)); // Ingat pengumuman ini
+            }} 
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-200 hover:text-white p-2"
+          >
+            <i className="fas fa-times text-lg"></i>
           </button>
         </div>
       )}
