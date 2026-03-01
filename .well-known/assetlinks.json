@@ -1,8 +1,0 @@
-[{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "store.iszi.twa",
-        "sha256_cert_fingerprints": ["9D:FA:7F:2C:00:1D:29:E0:92:43:9B:33:07:48:5B:55:58:9C:3F:34:73:6D:5D:20:26:EB:10:64:BC:5E:1E:C1"]
-      }
-    }]
