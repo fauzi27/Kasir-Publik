@@ -8,30 +8,41 @@ export default function SuperAdmin({ currentUser }) {
   const [owners, setOwners] = useState([]);
   const [totalStaff, setTotalStaff] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // 🔥 STATE UNTUK FITUR PENCARIAN
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // === AMBIL SEMUA DATA KLIEN DARI FIREBASE ===
+  // === AMBIL SEMUA DATA KLIEN & KELOMPOKKAN KARYAWAN ===
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
       const querySnapshot = await getDocs(collection(db, "users"));
       let ownerList = [];
+      let staffMap = {}; // Buku catatan sementara untuk menghitung karyawan per bos
       let staffCount = 0;
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        // Jika punya ownerId, berarti dia kasir/karyawan
         if (data.ownerId) {
+          // Jika dia karyawan, tambah total global, lalu catat di buku bosnya
           staffCount++;
+          staffMap[data.ownerId] = (staffMap[data.ownerId] || 0) + 1;
         } else {
-          // Jika tidak ada ownerId, berarti dia Bos/Klien (Pemilik Toko)
+          // Jika dia Bos, masukkan ke antrean
           ownerList.push({ id: doc.id, ...data });
         }
       });
 
+      // Gabungkan buku catatan karyawan tadi ke data Bos masing-masing
+      const enrichedOwnerList = ownerList.map(owner => ({
+        ...owner,
+        staffCount: staffMap[owner.id] || 0 // Jika tidak ada di buku, berarti 0 karyawan
+      }));
+
       // Urutkan klien terbaru di atas
-      ownerList.sort((a, b) => (b.joinedAt || 0) - (a.joinedAt || 0));
+      enrichedOwnerList.sort((a, b) => (b.joinedAt || 0) - (a.joinedAt || 0));
       
-      setOwners(ownerList);
+      setOwners(enrichedOwnerList);
       setTotalStaff(staffCount);
     } catch (error) {
       console.error("Gagal menarik data:", error);
@@ -65,12 +76,43 @@ export default function SuperAdmin({ currentUser }) {
             isSuspended: !isCurrentlySuspended
           });
           Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Status Diperbarui', timer: 1500, showConfirmButton: false });
-          fetchAllData(); // Refresh data
+          fetchAllData(); 
         } catch (error) {
           Swal.fire('Error', 'Gagal mengupdate status: ' + error.message, 'error');
         }
       }
     });
+  };
+
+  // === FUNGSI EDIT LIMIT TRANSAKSI ===
+  const handleEditLimit = async (owner) => {
+    const currentLimit = owner.maxTransactions || 0; 
+
+    const { value: newLimit } = await Swal.fire({
+      title: 'Atur Kuota Transaksi',
+      html: `Masukkan batas maksimal nota per bulan untuk <b>${owner.shopName || owner.name}</b>.<br><span class="text-xs text-gray-400">(Isi 0 untuk UNLIMITED)</span>`,
+      input: 'number',
+      inputValue: currentLimit,
+      showCancelButton: true,
+      confirmButtonColor: '#3b82f6',
+      cancelButtonColor: '#374151',
+      confirmButtonText: 'Simpan Limit',
+      inputValidator: (value) => {
+        if (value < 0) return 'Limit tidak boleh kurang dari 0!';
+      }
+    });
+
+    if (newLimit !== undefined) {
+      try {
+        await updateDoc(doc(db, "users", owner.id), {
+          maxTransactions: parseInt(newLimit)
+        });
+        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Limit Disimpan', timer: 1500, showConfirmButton: false });
+        fetchAllData();
+      } catch (error) {
+        Swal.fire('Error', 'Gagal menyimpan limit: ' + error.message, 'error');
+      }
+    }
   };
 
   // === FUNGSI LOGOUT ===
@@ -88,8 +130,18 @@ export default function SuperAdmin({ currentUser }) {
     });
   };
 
+  // 🔥 MESIN PENCARIAN (Filter data sebelum di-render ke tabel)
+  const filteredOwners = owners.filter(owner => {
+    const searchLower = searchTerm.toLowerCase();
+    const shopName = (owner.shopName || owner.name || '').toLowerCase();
+    const email = (owner.email || '').toLowerCase();
+    return shopName.includes(searchLower) || email.includes(searchLower);
+  });
+
+  const activeCount = owners.filter(o => !o.isSuspended).length;
+  const suspendedCount = owners.filter(o => o.isSuspended).length;
+
   return (
-    // 🔥 Desain di-hardcode ke tema gelap (Slate) agar selalu terlihat seperti Command Center
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden">
       
       {/* HEADER NAVIGASI */}
@@ -112,14 +164,12 @@ export default function SuperAdmin({ currentUser }) {
         
         {/* 4 KARTU METRIK UTAMA */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden">
             <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-bl-full flex items-start justify-end p-3">
               <i className="fas fa-store text-blue-500 text-lg"></i>
             </div>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Total Klien / Toko</p>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Total Toko</p>
             <h2 className="text-4xl font-black text-white">{owners.length}</h2>
-            <p className="text-[10px] text-emerald-400 mt-2 font-mono flex items-center gap-1"><i className="fas fa-arrow-up"></i> Terus bertumbuh</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden">
@@ -128,16 +178,17 @@ export default function SuperAdmin({ currentUser }) {
             </div>
             <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Total Karyawan</p>
             <h2 className="text-4xl font-black text-white">{totalStaff}</h2>
-            <p className="text-[10px] text-slate-500 mt-2 font-mono">Akun kasir yang didaftarkan klien</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden">
             <div className="absolute top-0 right-0 w-16 h-16 bg-orange-500/10 rounded-bl-full flex items-start justify-end p-3">
-              <i className="fas fa-database text-orange-500 text-lg"></i>
+              <i className="fas fa-chart-pie text-orange-500 text-lg"></i>
             </div>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Beban Database</p>
-            <h2 className="text-3xl font-black text-white mt-1">~Aman</h2>
-            <p className="text-[10px] text-slate-500 mt-2 font-mono">Firebase Free Tier Limit: 50K Reads/Day</p>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Status Klien</p>
+            <div className="flex items-center gap-4 mt-1">
+              <div><span className="text-2xl font-black text-emerald-400">{activeCount}</span> <span className="text-[10px] text-slate-500">Aktif</span></div>
+              <div><span className="text-2xl font-black text-red-400">{suspendedCount}</span> <span className="text-[10px] text-slate-500">Blokir</span></div>
+            </div>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm flex items-center justify-between">
@@ -153,27 +204,40 @@ export default function SuperAdmin({ currentUser }) {
             </div>
             <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Firebase_Logo.svg/1200px-Firebase_Logo.svg.png" alt="Firebase" className="h-10 opacity-80" />
           </div>
-
         </div>
 
-        {/* TABEL DAFTAR KLIEN (GOD MODE) */}
+        {/* TABEL DAFTAR KLIEN & PENCARIAN */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-          <div className="px-6 py-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+          
+          <div className="px-6 py-5 border-b border-slate-800 flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-slate-900/50">
             <h3 className="font-bold text-white text-lg flex items-center gap-2">
               <i className="fas fa-list-ul text-blue-500"></i> Direktori Pelanggan
             </h3>
-            <button onClick={fetchAllData} className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition" title="Refresh Data">
-              <i className={`fas fa-sync-alt ${isLoading ? 'fa-spin' : ''}`}></i>
-            </button>
+            
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <i className="fas fa-search absolute left-3 top-2.5 text-slate-500 text-sm"></i>
+                <input 
+                  type="text" 
+                  placeholder="Cari toko atau email..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-blue-500 w-full md:w-64 transition-colors"
+                />
+              </div>
+              <button onClick={fetchAllData} className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition border border-slate-700" title="Refresh Data">
+                <i className={`fas fa-sync-alt ${isLoading ? 'fa-spin' : ''}`}></i>
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-950/50 text-slate-400 text-xs uppercase tracking-wider">
-                  <th className="p-4 font-semibold border-b border-slate-800">Nama Toko & Pemilik</th>
+                  <th className="p-4 font-semibold border-b border-slate-800">Nama Toko & Karyawan</th>
                   <th className="p-4 font-semibold border-b border-slate-800">Email Utama</th>
-                  <th className="p-4 font-semibold border-b border-slate-800">Status Akun</th>
+                  <th className="p-4 font-semibold border-b border-slate-800">Status & Kuota</th>
                   <th className="p-4 font-semibold border-b border-slate-800 text-center">Aksi (God Mode)</th>
                 </tr>
               </thead>
@@ -184,33 +248,44 @@ export default function SuperAdmin({ currentUser }) {
                       <i className="fas fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block"></i> Memuat data klien...
                     </td>
                   </tr>
-                ) : owners.length === 0 ? (
+                ) : filteredOwners.length === 0 ? (
                   <tr>
                     <td colSpan="4" className="p-8 text-center text-slate-500 font-mono">
-                      Belum ada klien yang terdaftar.
+                      {searchTerm ? 'Pencarian tidak ditemukan.' : 'Belum ada klien yang terdaftar.'}
                     </td>
                   </tr>
                 ) : (
-                  owners.map((owner) => (
+                  filteredOwners.map((owner) => (
                     <tr key={owner.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="p-4">
                         <p className="font-bold text-white text-base">{owner.shopName || owner.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono uppercase mt-0.5">ID: {owner.id.slice(0, 8)}...</p>
+                        
+                        {/* 🔥 BADGE KARYAWAN & ID DITAMBAHKAN DI SINI */}
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                          <p className="text-[10px] text-slate-400 font-mono uppercase">ID: {owner.id.slice(0, 8)}...</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-md border flex items-center gap-1 font-bold ${
+                            owner.staffCount > 0 
+                              ? 'bg-purple-900/30 text-purple-400 border-purple-800/50' 
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}>
+                            <i className="fas fa-user-tie"></i> {owner.staffCount} Kasir
+                          </span>
+                        </div>
                       </td>
                       <td className="p-4 text-slate-300">{owner.email}</td>
                       <td className="p-4">
-                        {owner.isSuspended ? (
-                          <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase">
-                            🔴 Suspended
+                        <div className="flex flex-col items-start gap-1">
+                          {owner.isSuspended ? (
+                            <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase">🔴 Suspended</span>
+                          ) : (
+                            <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase">🟢 Active</span>
+                          )}
+                          <span className="text-[10px] text-slate-400 font-mono bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 mt-1">
+                            Limit: {owner.maxTransactions > 0 ? `${owner.maxTransactions} / bln` : 'UNLIMITED'}
                           </span>
-                        ) : (
-                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase">
-                            🟢 Active
-                          </span>
-                        )}
+                        </div>
                       </td>
                       <td className="p-4 flex justify-center gap-2">
-                        {/* Tombol Suspend */}
                         <button 
                           onClick={() => handleToggleSuspend(owner)}
                           className={`w-9 h-9 rounded-xl flex items-center justify-center transition shadow-sm border ${
@@ -223,8 +298,11 @@ export default function SuperAdmin({ currentUser }) {
                           <i className={`fas ${owner.isSuspended ? 'fa-play' : 'fa-ban'}`}></i>
                         </button>
                         
-                        {/* Tombol Fitur Kelak */}
-                        <button className="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 border border-slate-700 hover:text-white hover:bg-slate-700 flex items-center justify-center transition shadow-sm" title="Edit Limit (Segera Hadir)">
+                        <button 
+                          onClick={() => handleEditLimit(owner)}
+                          className="w-9 h-9 rounded-xl bg-blue-900/30 text-blue-400 border border-blue-800/50 hover:bg-blue-800/50 hover:text-white flex items-center justify-center transition shadow-sm" 
+                          title="Atur Kuota Transaksi"
+                        >
                           <i className="fas fa-sliders-h"></i>
                         </button>
                       </td>
