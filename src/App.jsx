@@ -22,9 +22,17 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState('lobby'); 
 
-  // === 🔥 CEK ROLE ===
-  const isKasir = businessData?.role === 'kasir';
-  const restrictedViews = ['admin', 'stock', 'settings', 'table', 'studio'];
+  // === 🔥 CEK HAK AKSES (RBAC - ROLE BASED ACCESS CONTROL) ===
+  const isOwner = businessData?.role !== 'kasir';
+  
+  // Fungsi Satpam Pintar: Mengecek izin sebelum membuka halaman
+  const hasAccess = (view) => {
+    if (view === 'lobby') return true; // Lobi selalu terbuka untuk semua
+    if (isOwner) return true; // Bos/Owner bebas akses ke mana saja
+    
+    // Jika Karyawan, cek apakah saklar fiturnya di-ON-kan oleh Bos
+    return businessData?.accessRights?.[view] === true;
+  };
 
   // === 🔥 MESIN DARK MODE GLOBAL ===
   useEffect(() => {
@@ -37,8 +45,9 @@ function App() {
 
   // === 🔥 SISTEM NAVIGASI & KEAMANAN ROUTE ===
   const handleNavigate = (view) => {
-    if (isKasir && restrictedViews.includes(view)) {
-      Swal.fire('Akses Ditolak', 'Halaman ini khusus Admin/Pemilik.', 'error');
+    // Mengecek akses pakai Satpam Pintar sebelum pindah halaman
+    if (!hasAccess(view)) {
+      Swal.fire('Akses Ditolak', 'Anda tidak memiliki izin untuk mengakses fitur ini.', 'error');
       return;
     }
 
@@ -61,7 +70,7 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // === 🔥 AUTH LISTENER & LOGIKA DATA (DIPERBAIKI) ===
+  // === 🔥 AUTH LISTENER & LOGIKA DATA ===
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -128,12 +137,13 @@ function App() {
     );
   }
 
-  if (currentUser && isKasir && restrictedViews.includes(currentView)) {
+  // Jika mencoba masuk ke halaman (via link langsung) tapi tidak punya akses
+  if (currentUser && !hasAccess(currentView)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white p-6 text-center transition-colors duration-300">
         <i className="fas fa-shield-alt text-6xl text-red-500 mb-4"></i>
         <h2 className="text-2xl font-bold mb-2">Area Terlarang</h2>
-        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Akun Kasir tidak memiliki izin untuk mengakses halaman ini.</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Anda tidak memiliki izin dari Owner untuk mengakses halaman ini.</p>
         <button onClick={() => handleNavigate('lobby')} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition active:scale-95 shadow-lg">
           Kembali ke Lobi
         </button>
