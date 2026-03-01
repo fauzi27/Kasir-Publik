@@ -18,7 +18,7 @@ import Studio from './pages/Studio';
 import SuperAdmin from './pages/SuperAdmin'; 
 
 // 🔥 EMAIL SAKTI UNTUK MASUK KE GOD MODE
-const SUPER_ADMIN_EMAIL = "bosku@iszi.com"; 
+const SUPER_ADMIN_EMAIL = "fauzi27story@gmail.com"; 
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
