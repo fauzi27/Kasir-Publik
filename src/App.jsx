@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth'; // 🔥 TAMBAH signOut
 import { doc, getDoc } from 'firebase/firestore'; 
 import Swal from 'sweetalert2'; 
 
@@ -15,10 +15,10 @@ import Settings from './pages/Settings';
 import Table from './pages/Table';
 import Calculator from './pages/Calculator';
 import Studio from './pages/Studio'; 
-import SuperAdmin from './pages/SuperAdmin'; // 🔥 IMPORT HALAMAN SUPER ADMIN
+import SuperAdmin from './pages/SuperAdmin'; 
 
-// 🔥 EMAIL SAKTI UNTUK MASUK KE GOD MODE (Ganti dengan email aslimu)
-const SUPER_ADMIN_EMAIL = "fauzi27story@gmail.com"; 
+// 🔥 EMAIL SAKTI UNTUK MASUK KE GOD MODE
+const SUPER_ADMIN_EMAIL = "bosku@iszi.com"; 
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -28,12 +28,11 @@ function App() {
 
   // === 🔥 CEK HAK AKSES (RBAC & SUPER ADMIN) ===
   const isOwner = businessData?.role !== 'kasir';
-  const isSuperAdmin = currentUser?.email === SUPER_ADMIN_EMAIL; // Deteksi akun CEO
+  const isSuperAdmin = currentUser?.email === SUPER_ADMIN_EMAIL; 
   
-  // Fungsi Satpam Pintar: Mengecek izin sebelum membuka halaman
   const hasAccess = (view) => {
-    if (isSuperAdmin) return true; // Bos Besar bebas akses ke mana saja
-    if (view === 'superadmin' && !isSuperAdmin) return false; // Klien biasa dilarang ke panel Super Admin
+    if (isSuperAdmin) return true; 
+    if (view === 'superadmin' && !isSuperAdmin) return false; 
     
     if (view === 'lobby') return true; 
     if (isOwner) return true; 
@@ -64,7 +63,6 @@ function App() {
   };
 
   useEffect(() => {
-    // Jika Super Admin login, arahkan langsung ke superadmin (bypass lobby)
     if (isSuperAdmin && currentView === 'lobby') {
        window.history.replaceState({ view: 'superadmin' }, '', '#superadmin');
        setCurrentView('superadmin');
@@ -80,7 +78,7 @@ function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isSuperAdmin]); // Memicu ulang jika status Super Admin berubah (saat login)
+  }, [isSuperAdmin]); 
 
   // === 🔥 AUTH LISTENER & LOGIKA DATA ===
   useEffect(() => {
@@ -88,10 +86,9 @@ function App() {
       if (user) {
         setCurrentUser(user);
         
-        // Pengecekan Khusus Super Admin
         if (user.email === SUPER_ADMIN_EMAIL) {
            setBusinessData({ role: 'superadmin', name: 'CEO ISZI', shopName: 'ISZI Command Center' });
-           setCurrentView('superadmin'); // Paksa masuk ke God Mode
+           setCurrentView('superadmin'); 
            setIsLoading(false);
            return; 
         }
@@ -108,6 +105,7 @@ function App() {
               const fallbackName = user.displayName || user.email?.split('@')[0] || 'Admin';
               dataUsaha.operatorName = dataUsaha.name || fallbackName;
 
+              // 🔥 LOGIKA KASIR (Pewarisan Data Bos)
               if (dataUsaha.role === 'kasir' && dataUsaha.ownerId) {
                 const ownerSnap = await getDoc(doc(db, "users", dataUsaha.ownerId));
                 if (ownerSnap.exists()) {
@@ -115,6 +113,8 @@ function App() {
                   dataUsaha.shopName = ownerData.shopName || ownerData.name || "ISZI POS";
                   dataUsaha.shopAddress = ownerData.shopAddress || ownerData.address || "Nusadua Bali";
                   if (ownerData.themeData) dataUsaha.themeData = ownerData.themeData; 
+                  // 🔥 WARISKAN STATUS BLOKIR DARI BOS KE KASIRNYA
+                  dataUsaha.isSuspended = ownerData.isSuspended; 
                 }
               } else {
                 dataUsaha.shopName = dataUsaha.shopName || dataUsaha.name || "ISZI POS";
@@ -149,6 +149,27 @@ function App() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white transition-colors duration-300">
         <i className="fas fa-circle-notch fa-spin text-4xl text-blue-500 mb-3"></i>
         <span className="text-sm font-bold">Menyiapkan ISZI...</span>
+      </div>
+    );
+  }
+
+  // === 🔥 TEMBOK RATAPAN (SUSPEND SCREEN) 🔥 ===
+  if (businessData?.isSuspended && !isSuperAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white p-6 text-center transition-colors duration-300">
+        <div className="bg-red-50 dark:bg-red-900/20 p-6 rounded-full mb-6 border-4 border-red-100 dark:border-red-900/50 shadow-inner">
+          <i className="fas fa-lock text-6xl text-red-600 dark:text-red-500"></i>
+        </div>
+        <h2 className="text-3xl font-black mb-3 text-red-600 dark:text-red-400">Akses Ditangguhkan</h2>
+        <p className="text-gray-600 dark:text-gray-400 text-sm mb-8 max-w-sm leading-relaxed">
+          Masa berlangganan aplikasi untuk toko <span className="font-bold text-gray-800 dark:text-white">{businessData.shopName}</span> telah habis atau akses sedang diblokir oleh Admin. Silakan hubungi layanan pelanggan ISZI.
+        </p>
+        <button 
+          onClick={() => signOut(auth)} 
+          className="bg-gray-800 dark:bg-gray-700 hover:bg-gray-900 dark:hover:bg-gray-600 text-white px-8 py-3.5 rounded-xl font-bold transition active:scale-95 shadow-lg flex items-center gap-2"
+        >
+          <i className="fas fa-sign-out-alt"></i> Keluar / Ganti Akun
+        </button>
       </div>
     );
   }
