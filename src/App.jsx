@@ -31,7 +31,6 @@ function App() {
   const isOwner = businessData?.role !== 'kasir' && businessData?.role !== 'ghost';
   const isSuperAdmin = currentUser?.email === SUPER_ADMIN_EMAIL; 
   
-  // 🔥 Cek Akses: Jika Admin menyamar, perlakukan dia sebagai pengguna normal
   const hasAccess = (view) => {
     if (isSuperAdmin && !impersonatedUid) return view === 'superadmin'; 
     if (view === 'superadmin' && !isSuperAdmin) return false; 
@@ -61,7 +60,6 @@ function App() {
     }
   };
 
-  // 🔥 Navigasi Paksa: Arahkan Admin ke Command Center (Kecuali sedang menyamar)
   useEffect(() => {
     if (isSuperAdmin && !impersonatedUid && currentView !== 'superadmin') {
        window.history.replaceState({ view: 'superadmin' }, '', '#superadmin');
@@ -86,7 +84,7 @@ function App() {
       setCurrentUser(user);
       if (!user) {
          setBusinessData(null);
-         setImpersonatedUid(null); // Bersihkan topeng saat logout
+         setImpersonatedUid(null); 
          setCurrentView('lobby'); 
          setIsLoading(false);
       }
@@ -98,7 +96,6 @@ function App() {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Jika Admin dan TIDAK SEDANG MENYAMAR, tampilkan data dummy Command Center
     if (isSuperAdmin && !impersonatedUid) {
        setBusinessData({ role: 'superadmin', name: 'CEO ISZI', shopName: 'ISZI Command Center' });
        if (currentView !== 'superadmin') setCurrentView('superadmin'); 
@@ -106,7 +103,6 @@ function App() {
        return; 
     }
 
-    // Jika admin menyamar, target pencarian data diubah menjadi UID Klien
     const targetUid = impersonatedUid || currentUser.uid;
 
     const unsubDoc = onSnapshot(doc(db, "users", targetUid), async (docSnap) => {
@@ -130,7 +126,6 @@ function App() {
           dataUsaha.shopAddress = dataUsaha.shopAddress || dataUsaha.address || "Nusadua Bali";
         }
 
-        // Jangan simpan ke cache lokal jika sedang mode menyamar (agar aman)
         if (!impersonatedUid) {
           localStorage.setItem('cached_user_profile', JSON.stringify(dataUsaha));
         }
@@ -149,7 +144,7 @@ function App() {
     });
 
     return () => unsubDoc();
-  }, [currentUser, impersonatedUid, isSuperAdmin]); // Memicu ulang jika status topeng berubah
+  }, [currentUser, impersonatedUid, isSuperAdmin]); 
 
   if (isLoading) {
     return (
@@ -200,8 +195,6 @@ function App() {
     );
   }
 
-  // 🔥 MAGIC TRICK: "Effective User"
-  // Kalau admin sedang menyamar, kita mengirimkan data palsu (UID klien) ke seluruh anak aplikasi!
   const effectiveUser = impersonatedUid && currentUser 
     ? { ...currentUser, uid: impersonatedUid } 
     : currentUser;
@@ -220,6 +213,7 @@ function App() {
           </span>
           <button
             onClick={() => {
+              setIsLoading(true); // 🔥 Munculkan loading agar smooth
               setImpersonatedUid(null);
               handleNavigate('superadmin');
             }}
@@ -230,7 +224,6 @@ function App() {
         </div>
       )}
 
-      {/* RENDER HALAMAN SEPERTI BIASA (TAPI MENGGUNAKAN EFFECTIVE USER) */}
       <div className="flex-1 overflow-y-auto">
         {currentUser ? (
           <>
@@ -245,8 +238,17 @@ function App() {
             {currentView === 'table' && <Table businessData={businessData} currentUser={effectiveUser} onNavigate={handleNavigate} />}
             {currentView === 'studio' && <Studio businessData={businessData} currentUser={effectiveUser} onNavigate={handleNavigate} />}
             
-            {/* SuperAdmin dikirimkan fungsi untuk memicu fitur menyamar */}
-            {currentView === 'superadmin' && <SuperAdmin currentUser={currentUser} onImpersonate={setImpersonatedUid} />}
+            {/* 🔥 FUNGSI ONIMPERSONATE DIPERBAIKI (MENGGANTI LAYAR & LOADING) */}
+            {currentView === 'superadmin' && (
+              <SuperAdmin 
+                currentUser={currentUser} 
+                onImpersonate={(uid) => {
+                  setIsLoading(true); // Memunculkan layar biru loading sejenak
+                  setImpersonatedUid(uid); // Pasang topeng
+                  handleNavigate('lobby'); // LOMPAT KE LOBI!
+                }} 
+              />
+            )}
           </>
         ) : (
           <Auth />
