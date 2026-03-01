@@ -25,7 +25,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState('lobby'); 
   
-  // 🔥 STATE BARU: MATA DEWA (IMPERSONATION)
+  // 🔥 STATE MATA DEWA
   const [impersonatedUid, setImpersonatedUid] = useState(null);
 
   const isOwner = businessData?.role !== 'kasir' && businessData?.role !== 'ghost';
@@ -92,7 +92,6 @@ function App() {
     return () => unsubscribeAuth(); 
   }, []);
 
-  // === 🔥 RADAR DATA (DIPERBARUI UNTUK MATA DEWA) ===
   useEffect(() => {
     if (!currentUser) return;
 
@@ -213,9 +212,11 @@ function App() {
           </span>
           <button
             onClick={() => {
-              setIsLoading(true); // 🔥 Munculkan loading agar smooth
+              setIsLoading(true);
               setImpersonatedUid(null);
-              handleNavigate('superadmin');
+              // 🔥 SOLUSI: Bypass handleNavigate saat kembali ke admin
+              window.history.pushState({ view: 'superadmin' }, '', '#superadmin');
+              setCurrentView('superadmin');
             }}
             className="bg-black/30 hover:bg-black/50 px-3 py-1.5 rounded-lg transition border border-red-500/30 flex items-center gap-1.5"
           >
@@ -238,14 +239,15 @@ function App() {
             {currentView === 'table' && <Table businessData={businessData} currentUser={effectiveUser} onNavigate={handleNavigate} />}
             {currentView === 'studio' && <Studio businessData={businessData} currentUser={effectiveUser} onNavigate={handleNavigate} />}
             
-            {/* 🔥 FUNGSI ONIMPERSONATE DIPERBAIKI (MENGGANTI LAYAR & LOADING) */}
             {currentView === 'superadmin' && (
               <SuperAdmin 
                 currentUser={currentUser} 
                 onImpersonate={(uid) => {
-                  setIsLoading(true); // Memunculkan layar biru loading sejenak
-                  setImpersonatedUid(uid); // Pasang topeng
-                  handleNavigate('lobby'); // LOMPAT KE LOBI!
+                  setIsLoading(true); 
+                  setImpersonatedUid(uid); 
+                  // 🔥 SOLUSI: Bypass handleNavigate saat masuk jadi klien
+                  window.history.pushState({ view: 'lobby' }, '', '#lobby');
+                  setCurrentView('lobby');
                 }} 
               />
             )}
