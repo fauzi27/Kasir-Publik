@@ -276,9 +276,9 @@ export default function Admin({ businessData, currentUser, onNavigate }) {
 
   // === 🔥 FUNGSI DOWNLOAD TEMPLATE CSV 🔥 ===
   const downloadTemplateCSV = () => {
-    const headers = "Nama Menu,Harga,Kategori,Stok\n";
-    const example1 = "Nasi Goreng Spesial,25000,Makanan,50\n";
-    const example2 = "Es Teh Manis,5000,Minuman,100\n";
+    const headers = "Nama Menu,Kategori,Harga,Stok\n";
+    const example1 = "Nasi Goreng Spesial,makanan,25000,50\n";
+    const example2 = "Es Teh Manis,Minuman,5000,100\n";
     const csvContent = headers + example1 + example2;
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
