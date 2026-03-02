@@ -11,7 +11,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [globalTx, setGlobalTx] = useState(0);
 
-  // === AMBIL SEMUA DATA & HITUNG KUOTA REAL-TIME ===
+  // === AMBIL SEMUA DATA & KELOMPOKKAN DETAIL KARYAWAN ===
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
@@ -43,18 +43,15 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
         let imageUsage = 0;
 
         try {
-          // 1. Hitung Penggunaan Transaksi Bulan Ini
           const qTx = query(collection(db, "users", owner.id, "transactions"), where("timestamp", ">=", startOfMonth.getTime()));
           const snapTx = await getCountFromServer(qTx);
           currentUsage = snapTx.data().count;
           totalTxSistem += currentUsage; 
 
-          // 2. Hitung Total Menu
           const qMenu = collection(db, "users", owner.id, "menus");
-          const snapMenu = await getDocs(qMenu); // Pakai getDocs karena kita butuh ngecek field image
+          const snapMenu = await getDocs(qMenu); 
           menuUsage = snapMenu.size;
 
-          // 3. Hitung Total Foto (Menu yang field 'image'-nya tidak kosong)
           snapMenu.forEach((doc) => {
             const menuData = doc.data();
             if (menuData.image && menuData.image.trim() !== '') {
@@ -69,8 +66,8 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
           staffList: staffMap[owner.id] || [], 
           staffCount: (staffMap[owner.id] || []).length,
           currentUsage: currentUsage,
-          menuUsage: menuUsage,      // 🔥 Simpan data menu terpakai
-          imageUsage: imageUsage     // 🔥 Simpan data foto terpakai
+          menuUsage: menuUsage,      
+          imageUsage: imageUsage     
         };
       }));
 
@@ -89,19 +86,34 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
     fetchAllData();
   }, []);
 
-  // === FUNGSI MELIHAT DETAIL KARYAWAN ===
+  // === 🔥 FUNGSI MELIHAT DETAIL KARYAWAN & IMPERSONATE KARYAWAN 🔥 ===
   const handleViewStaff = (owner) => {
     if (!owner.staffList || owner.staffList.length === 0) {
       return Swal.fire({ icon: 'info', title: 'Belum Ada Kasir', text: 'Toko ini belum menambahkan karyawan.', confirmButtonColor: '#3b82f6' });
     }
 
+    // Fungsi Global sementara agar bisa dipanggil dari dalam HTML SweetAlert
+    window.executeImpersonateStaff = (staffId) => {
+      Swal.close(); // Tutup popup karyawan
+      if (onImpersonate) {
+        onImpersonate(staffId); // Luncurkan Mata Dewa dengan ID Kasir!
+      }
+    };
+
     let htmlContent = '<div class="text-left space-y-3 mt-4">';
     owner.staffList.forEach((staff) => {
       htmlContent += `
-        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-sm">
-          <p class="font-bold text-white text-sm">${staff.name || 'Tanpa Nama'}</p>
-          <p class="text-slate-400 text-xs mt-1"><i class="fas fa-envelope text-blue-400"></i> ${staff.email}</p>
-          <p class="text-slate-500 text-[10px] mt-1.5 font-mono bg-slate-900 px-2 py-1 rounded inline-block">ID: ${staff.id}</p>
+        <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-sm flex justify-between items-center">
+          <div>
+            <p class="font-bold text-white text-sm">${staff.name || 'Tanpa Nama'}</p>
+            <p class="text-slate-400 text-[11px] mt-1"><i class="fas fa-envelope text-blue-400"></i> ${staff.email}</p>
+            <p class="text-slate-500 text-[10px] mt-1.5 font-mono bg-slate-900 px-2 py-1 rounded inline-block">ID: ${staff.id.slice(0, 8)}</p>
+          </div>
+          ${onImpersonate ? `
+            <button onclick="window.executeImpersonateStaff('${staff.id}')" class="w-10 h-10 rounded-lg bg-purple-900/30 text-purple-400 border border-purple-800/50 hover:bg-purple-800/50 hover:text-white flex flex-col items-center justify-center transition shadow-sm flex-none ml-2" title="Menyamar jadi Kasir ini">
+              <i class="fas fa-user-secret text-sm"></i>
+            </button>
+          ` : ''}
         </div>
       `;
     });
@@ -357,7 +369,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
                       {/* KOLOM PROFIL & KARYAWAN */}
                       <td className="p-4 align-top">
                         <p className="font-bold text-white text-base">{owner.shopName || owner.name}</p>
-                        <div className="flex flex-wrap items-center gap-2 mt-2 cursor-pointer" onClick={() => handleViewStaff(owner)} title="Klik untuk lihat karyawan">
+                        <div className="flex flex-wrap items-center gap-2 mt-2 cursor-pointer" onClick={() => handleViewStaff(owner)} title="Klik untuk lihat & masuk sbg karyawan">
                           <p className="text-[10px] text-slate-400 font-mono uppercase bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 hover:bg-slate-700 transition">ID: {owner.id.slice(0, 8)}</p>
                           <span className={`text-[10px] px-2 py-0.5 rounded-md border flex items-center gap-1 font-bold transition hover:opacity-80 ${owner.staffCount > 0 ? 'bg-purple-900/30 text-purple-400 border-purple-800/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
                             <i className="fas fa-user-tie"></i> {owner.staffCount} Kasir
@@ -367,7 +379,7 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
 
                       <td className="p-4 align-top text-slate-300 font-mono text-xs pt-5">{owner.email}</td>
                       
-                      {/* KOLOM LIMIT & EXPIRED (YANG BARU) */}
+                      {/* KOLOM LIMIT & EXPIRED */}
                       <td className="p-4">
                         <div className="flex items-center gap-2 mb-3">
                           {isExpired ? (
@@ -387,12 +399,10 @@ export default function SuperAdmin({ currentUser, onImpersonate }) {
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                          {/* Limit Transaksi */}
                           <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-2 max-w-max ${(owner.maxTransactions > 0 && owner.currentUsage >= owner.maxTransactions) ? 'bg-red-900/40 text-red-400 border-red-800/50' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>
                             <i className="fas fa-receipt w-3 text-center"></i> Nota: {owner.maxTransactions > 0 ? `${owner.currentUsage} / ${owner.maxTransactions}` : `${owner.currentUsage} (Unlimited)`}
                           </span>
                           
-                          {/* 🔥 Limit Menu & Foto (SEKARANG MENAMPILKAN TERPAKAI/MAKSIMAL) 🔥 */}
                           <div className="flex gap-2">
                             <span className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-2 max-w-max ${(owner.maxMenus > 0 && owner.menuUsage >= owner.maxMenus) ? 'bg-red-900/40 text-red-400 border-red-800/50' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>
                               <i className="fas fa-hamburger w-3 text-center"></i> Menu: {owner.maxMenus > 0 ? `${owner.menuUsage} / ${owner.maxMenus}` : `${owner.menuUsage} (Unlimited)`}
